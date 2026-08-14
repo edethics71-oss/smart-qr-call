@@ -1,0 +1,12 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // School Smart QR System Security Rules
+    // Allows public student visits to read & create/update calls without authentication
+    // Deletions are restricted to prevent accidental removal of school visit logs
+    match /{document=**} {
+      allow read, create, update: if true;
+      allow delete: if false;
+    }
+  }
+}
