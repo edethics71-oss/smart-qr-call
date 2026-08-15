@@ -23,7 +23,7 @@ import type { Teacher, Call, ThemeType } from '../types';
 interface StudentMobileViewProps {
   theme: ThemeType;
   initialRoom: string;
-  onNavigateToTeacher: () => void;
+  onNavigateToTeacher?: () => void;
 }
 
 export const StudentMobileView: React.FC<StudentMobileViewProps> = ({
@@ -115,11 +115,9 @@ export const StudentMobileView: React.FC<StudentMobileViewProps> = ({
       const callId = await dbService.createCall({
         room: currentRoom,
         teacherName: selectedTeacher.name,
-        status: 'pending',
         studentName: '',
         reason: '',
         hasMemo: false,
-        createdAt: Date.now(),
       });
 
       setActiveCallId(callId);
@@ -742,18 +740,6 @@ export const StudentMobileView: React.FC<StudentMobileViewProps> = ({
           </form>
         </div>
       )}
-
-      {/* Quick link back to Teacher view for demo tester */}
-      <div className="mt-8 text-center">
-        <button
-          onClick={onNavigateToTeacher}
-          className={`text-xs underline transition cursor-pointer ${
-            isLight ? 'text-indigo-600 hover:text-indigo-800' : 'text-slate-500 hover:text-slate-400'
-          }`}
-        >
-          교직원 포털 화면으로 이동
-        </button>
-      </div>
     </div>
   );
 };

@@ -1,6 +1,6 @@
 {
   "name": "스마트 QR 방문 접수처",
-  "description": "교무실 앞 QR 코드를 통한 실시간 교사 호출, 자동 부재중 처리 및 방문 메모 수신 시스템",
+  "description": "교무실 앞 QR 방문 호출, 교사-학생 실시간 호출/알림, 조회·종례 및 학년/부서 전달사항, 등교 원터치 출결 체크(나이스 연동), 교직원 업무 쪽지 및 수합 올인원 시스템",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

@@ -13,7 +13,13 @@ import {
   Download,
   Users,
   Sparkles,
-  AlertCircle
+  AlertCircle,
+  FileSpreadsheet,
+  Plus,
+  CheckCircle2,
+  HelpCircle,
+  RefreshCw,
+  Tag
 } from 'lucide-react';
 import { dbService } from '../lib/firebase';
 import type { Teacher, ThemeType } from '../types';
@@ -25,6 +31,25 @@ interface TeacherManagementViewProps {
   onNavigateToStudentView: (room: string) => void;
 }
 
+const COMMON_TAG_SUGGESTIONS = [
+  '1학년 담임',
+  '2학년 담임',
+  '3학년 담임',
+  '부장교사',
+  '기획위원회',
+  '교육과정위원회',
+  '학폭전담기구',
+  '인사자문위원회',
+  '수학과',
+  '국어과',
+  '영어과',
+  '과학과',
+  '사회과',
+  '예체능과',
+  '진로진학부',
+  '학생안전부',
+];
+
 export const TeacherManagementView: React.FC<TeacherManagementViewProps> = ({
   theme,
   teachers,
@@ -33,13 +58,23 @@ export const TeacherManagementView: React.FC<TeacherManagementViewProps> = ({
 }) => {
   const isLight = theme === 'vibrant-palette';
 
-  // Add teacher form states
+  // Registration Mode: 'single' (1명씩 직접 등록) or 'bulk' (일괄 등록)
+  const [registerMode, setRegisterMode] = useState<'single' | 'bulk'>('single');
+
+  // Single Add Teacher form states
   const [name, setName] = useState('');
   const [room, setRoom] = useState('본관 1교무실');
   const [customRoom, setCustomRoom] = useState('');
   const [isCustomRoom, setIsCustomRoom] = useState(false);
   const [subject, setSubject] = useState('');
+  const [selectedTags, setSelectedTags] = useState<string[]>(['1학년 담임']);
+  const [newTagInput, setNewTagInput] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Bulk Add Textarea state
+  const [bulkText, setBulkText] = useState('');
+  const [bulkDefaultRoom, setBulkDefaultRoom] = useState('본관 1교무실');
+  const [bulkSuccessMsg, setBulkSuccessMsg] = useState('');
 
   // Selected room for QR preview
   const [qrRoom, setQrRoom] = useState<string>('본관 1교무실');
@@ -67,24 +102,65 @@ export const TeacherManagementView: React.FC<TeacherManagementViewProps> = ({
     return `${origin}/student?room=${encodeURIComponent(qrRoom)}`;
   }, [qrRoom]);
 
-  // Avatar color generator based on index or name
-  const getAvatarColor = (nameStr: string) => {
-    const colors = [
-      'bg-indigo-100 text-indigo-700 border-indigo-200',
-      'bg-emerald-100 text-emerald-700 border-emerald-200',
-      'bg-purple-100 text-purple-700 border-purple-200',
-      'bg-rose-100 text-rose-700 border-rose-200',
-      'bg-amber-100 text-amber-700 border-amber-200',
-      'bg-teal-100 text-teal-700 border-teal-200',
-    ];
-    let hash = 0;
-    for (let i = 0; i < nameStr.length; i++) {
-      hash = nameStr.charCodeAt(i) + ((hash << 5) - hash);
+  const toggleTag = (tag: string) => {
+    if (selectedTags.includes(tag)) {
+      setSelectedTags(selectedTags.filter((t) => t !== tag));
+    } else {
+      setSelectedTags([...selectedTags, tag]);
     }
-    return colors[Math.abs(hash) % colors.length];
   };
 
-  // Handle Add Teacher
+  const handleAddCustomTag = () => {
+    if (newTagInput.trim() && !selectedTags.includes(newTagInput.trim())) {
+      setSelectedTags([...selectedTags, newTagInput.trim()]);
+      setNewTagInput('');
+    }
+  };
+
+  // Parse Bulk Text in Realtime
+  const parsedBulkTeachers = useMemo(() => {
+    if (!bulkText.trim()) return [];
+
+    const lines = bulkText.split('\n');
+    const result: Omit<Teacher, 'id'>[] = [];
+
+    for (const rawLine of lines) {
+      const line = rawLine.trim();
+      if (!line || line.startsWith('#')) continue;
+
+      let parts: string[] = [];
+      if (line.includes('\t')) {
+        parts = line.split('\t');
+      } else if (line.includes(',')) {
+        parts = line.split(',');
+      } else if (line.includes('/')) {
+        parts = line.split('/');
+      } else {
+        parts = line.split(/\s+/);
+      }
+
+      parts = parts.map((p) => p.trim()).filter(Boolean);
+      if (parts.length === 0) continue;
+
+      const teacherName = parts[0];
+      const teacherRoom = parts[1] || bulkDefaultRoom;
+      const teacherSubject = parts[2] || undefined;
+      const teacherTags = parts[3] ? parts[3].split('|').map((t) => t.trim()) : undefined;
+
+      if (teacherName) {
+        result.push({
+          name: teacherName,
+          room: teacherRoom,
+          subject: teacherSubject,
+          tags: teacherTags,
+        });
+      }
+    }
+
+    return result;
+  }, [bulkText, bulkDefaultRoom]);
+
+  // Handle Single Add Teacher
   const handleAddTeacher = async (e: React.FormEvent) => {
     e.preventDefault();
     const finalRoom = (isCustomRoom ? customRoom : room).trim();
@@ -105,10 +181,12 @@ export const TeacherManagementView: React.FC<TeacherManagementViewProps> = ({
         name: finalName,
         room: finalRoom,
         subject: subject.trim() || undefined,
+        tags: selectedTags.length > 0 ? selectedTags : undefined,
       });
 
       setName('');
       setSubject('');
+      setSelectedTags(['1학년 담임']);
       if (isCustomRoom) {
         setRoom(finalRoom);
         setIsCustomRoom(false);
@@ -123,14 +201,46 @@ export const TeacherManagementView: React.FC<TeacherManagementViewProps> = ({
     }
   };
 
-  // Handle Delete Teacher
+  // Handle Bulk Add Teachers
+  const handleBulkSubmit = async () => {
+    if (parsedBulkTeachers.length === 0) {
+      alert('등록할 선생님 데이터가 없습니다. 텍스트를 입력해주세요.');
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      const addedCount = await dbService.addTeachersBatch(parsedBulkTeachers);
+      setBulkSuccessMsg(`🎉 총 ${addedCount}명의 선생님이 성공적으로 일괄 등록되었습니다!`);
+      setBulkText('');
+      setTimeout(() => setBulkSuccessMsg(''), 4000);
+    } catch (err) {
+      console.error('Failed to batch add teachers:', err);
+      alert('일괄 등록 중 오류가 발생했습니다.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleFillSample = () => {
+    setBulkText(
+`김민준\t본관 1교무실\t1학년 수학\t1학년 담임|수학과|교육과정위원회
+이서연\t본관 1교무실\t국어 / 교무기획\t기획위원회|국어과
+박지훈\t본관 1교무실\t영어\t1학년 담임|영어과
+최유나\t본관 2교무실\t2학년 부장 / 과학\t부장교사|2학년 담임|과학과
+정현우\t본관 2교무실\t사회 / 학생부\t학폭전담기구|사회과
+강도윤\t3학년 연구실\t3학년 부장 / 수학\t부장교사|3학년 담임|수학과
+윤지아\t3학년 연구실\t진로진학 / 역사\t3학년 담임|사회과
+임서진\t진로진학상담실\t전문상담교사\t학폭전담기구|인사자문위원회`
+    );
+  };
+
   const handleDeleteTeacher = async (id: string, teacherName: string) => {
     if (window.confirm(`정말로 [${teacherName}] 선생님을 명단에서 삭제하시겠습니까?`)) {
       await dbService.deleteTeacher(id);
     }
   };
 
-  // Copy Link
   const handleCopyLink = () => {
     navigator.clipboard.writeText(studentUrl);
     setCopiedLink(true);
@@ -139,387 +249,377 @@ export const TeacherManagementView: React.FC<TeacherManagementViewProps> = ({
 
   return (
     <div className="space-y-8">
-      {/* Page Header */}
+      {/* Header */}
       <div>
         <h2 className="text-2xl sm:text-3xl font-black tracking-tight">
-          교직원 명단 관리 & 교무실 QR 생성
+          👥 교직원 명단 & 소속 위원회·교과 관리
         </h2>
         <p className={`text-sm mt-1 ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
-          교무실별 선생님 명단을 등록하고, 교무실 앞 문에 부착할 학생 방문 호출용 QR 코드를
-          생성합니다.
+          학교 전체 선생님과 소속 교무실, 담당 학년/교과, 위원회(기획·교육과정·학폭전담 등) 태그를 등록하여 업무 쪽지 및 그룹 수합에 연동합니다.
         </p>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-        {/* Left Column: Teacher Registration & Roster (7 cols) */}
+        {/* Left Column: Teacher Registration (7 cols) */}
         <div className="lg:col-span-7 space-y-6">
-          {/* Add Teacher Card */}
           <div
-            id="add-teacher-card"
-            className={`p-6 rounded-2xl border transition-all ${
+            className={`p-6 rounded-3xl border transition-all ${
               isLight
                 ? 'bg-white border-indigo-100 text-slate-900 shadow-sm'
-                : 'bg-slate-900/90 border-slate-800 text-white shadow-xl'
+                : 'bg-slate-900 border-slate-800 text-white shadow-xl'
             }`}
           >
-            <div className="flex items-center gap-2 mb-4">
-              <UserPlus className="w-5 h-5 text-indigo-600 dark:text-emerald-400" />
-              <h3 className="font-black text-lg">새 선생님 등록</h3>
-            </div>
-
-            <form onSubmit={handleAddTeacher} className="space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {/* Name */}
-                <div>
-                  <label
-                    className={`block text-xs font-bold mb-1 ${
-                      isLight ? 'text-slate-600' : 'text-slate-400'
-                    }`}
-                  >
-                    선생님 성함 <span className="text-rose-500">*</span>
-                  </label>
-                  <input
-                    id="input-teacher-name"
-                    type="text"
-                    required
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    placeholder="예: 김민준"
-                    className={`w-full px-3.5 py-2.5 rounded-xl text-sm border outline-none font-medium transition ${
-                      isLight
-                        ? 'bg-indigo-50/40 border-indigo-200 text-slate-900 placeholder-slate-400 focus:border-indigo-500 focus:bg-white'
-                        : 'bg-slate-950 border-slate-700 text-white placeholder-slate-500 focus:border-emerald-500'
-                    }`}
-                  />
-                </div>
-
-                {/* Subject / Role */}
-                <div>
-                  <label
-                    className={`block text-xs font-bold mb-1 ${
-                      isLight ? 'text-slate-600' : 'text-slate-400'
-                    }`}
-                  >
-                    담당 과목 또는 직책 (선택)
-                  </label>
-                  <input
-                    id="input-teacher-subject"
-                    type="text"
-                    value={subject}
-                    onChange={(e) => setSubject(e.target.value)}
-                    placeholder="예: 3학년 수학 / 진로부장"
-                    className={`w-full px-3.5 py-2.5 rounded-xl text-sm border outline-none font-medium transition ${
-                      isLight
-                        ? 'bg-indigo-50/40 border-indigo-200 text-slate-900 placeholder-slate-400 focus:border-indigo-500 focus:bg-white'
-                        : 'bg-slate-950 border-slate-700 text-white placeholder-slate-500 focus:border-emerald-500'
-                    }`}
-                  />
-                </div>
+            {/* Mode Switcher */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5">
+              <div className="flex items-center gap-2">
+                <UserPlus className="w-5 h-5 text-indigo-600 dark:text-emerald-400" />
+                <h3 className="font-black text-lg">선생님 및 위원회 태그 등록</h3>
               </div>
 
-              {/* Room Selection */}
-              <div>
-                <label
-                  className={`block text-xs font-bold mb-1 ${
-                    isLight ? 'text-slate-600' : 'text-slate-400'
+              <div
+                className={`flex p-1 rounded-xl border ${
+                  isLight ? 'bg-slate-100 border-slate-200' : 'bg-slate-950 border-slate-800'
+                }`}
+              >
+                <button
+                  onClick={() => setRegisterMode('single')}
+                  className={`px-3 py-1 rounded-lg text-xs font-bold transition cursor-pointer ${
+                    registerMode === 'single'
+                      ? 'bg-indigo-600 text-white shadow-sm'
+                      : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
                   }`}
                 >
-                  소속 교무실 / 연구실 <span className="text-rose-500">*</span>
-                </label>
-                {!isCustomRoom ? (
-                  <div className="flex gap-2">
-                    <select
-                      id="select-room-input"
-                      value={room}
-                      onChange={(e) => {
-                        if (e.target.value === 'CUSTOM') {
-                          setIsCustomRoom(true);
-                        } else {
-                          setRoom(e.target.value);
-                        }
-                      }}
-                      className={`flex-1 px-3.5 py-2.5 rounded-xl text-sm border font-bold outline-none transition cursor-pointer ${
-                        isLight
-                          ? 'bg-indigo-50/40 border-indigo-200 text-slate-900 focus:border-indigo-500'
-                          : 'bg-slate-950 border-slate-700 text-white focus:border-emerald-500'
-                      }`}
-                    >
-                      {distinctRooms.map((r) => (
-                        <option key={r} value={r}>
-                          📍 {r}
-                        </option>
-                      ))}
-                      <option value="CUSTOM">➕ 새로운 교무실 직접 입력...</option>
-                    </select>
-                  </div>
-                ) : (
-                  <div className="flex gap-2">
+                  1명씩 직접 등록
+                </button>
+                <button
+                  onClick={() => setRegisterMode('bulk')}
+                  className={`px-3 py-1 rounded-lg text-xs font-bold transition cursor-pointer ${
+                    registerMode === 'bulk'
+                      ? 'bg-indigo-600 text-white shadow-sm'
+                      : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
+                  }`}
+                >
+                  명단 일괄 등록
+                </button>
+              </div>
+            </div>
+
+            {/* Single Add Form */}
+            {registerMode === 'single' ? (
+              <form onSubmit={handleAddTeacher} className="space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-bold mb-1 text-slate-500">
+                      선생님 성함 <span className="text-rose-500">*</span>
+                    </label>
                     <input
-                      id="input-custom-room"
                       type="text"
                       required
-                      value={customRoom}
-                      onChange={(e) => setCustomRoom(e.target.value)}
-                      placeholder="예: 본관 3층 영어교과연구실"
-                      className={`flex-1 px-3.5 py-2.5 rounded-xl text-sm border outline-none font-medium transition ${
-                        isLight
-                          ? 'bg-indigo-50/40 border-indigo-200 text-slate-900 focus:border-indigo-500'
-                          : 'bg-slate-950 border-slate-700 text-white focus:border-emerald-500'
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                      placeholder="예: 김민준"
+                      className={`w-full px-3.5 py-2 rounded-xl border text-sm font-black outline-none ${
+                        isLight ? 'bg-indigo-50/20 border-indigo-200' : 'bg-slate-950 border-slate-700'
+                      }`}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold mb-1 text-slate-500">
+                      담당 과목 / 보직
+                    </label>
+                    <input
+                      type="text"
+                      value={subject}
+                      onChange={(e) => setSubject(e.target.value)}
+                      placeholder="예: 1학년 수학, 교무기획부"
+                      className={`w-full px-3.5 py-2 rounded-xl border text-sm font-medium outline-none ${
+                        isLight ? 'bg-indigo-50/20 border-indigo-200' : 'bg-slate-950 border-slate-700'
+                      }`}
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold mb-1 text-slate-500">
+                    상주 교무실 / 연구실 <span className="text-rose-500">*</span>
+                  </label>
+                  {!isCustomRoom ? (
+                    <div className="flex gap-2">
+                      <select
+                        value={room}
+                        onChange={(e) => setRoom(e.target.value)}
+                        className={`flex-1 px-3.5 py-2 rounded-xl border text-sm font-black outline-none ${
+                          isLight ? 'bg-indigo-50/20 border-indigo-200' : 'bg-slate-950 border-slate-700'
+                        }`}
+                      >
+                        {distinctRooms.map((r) => (
+                          <option key={r} value={r}>
+                            📍 {r}
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        type="button"
+                        onClick={() => setIsCustomRoom(true)}
+                        className="px-3 py-2 rounded-xl text-xs font-bold border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
+                      >
+                        + 새 교무실 추가
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={customRoom}
+                        onChange={(e) => setCustomRoom(e.target.value)}
+                        placeholder="새 교무실 명칭 입력 (예: 제2외국어과실)"
+                        className={`flex-1 px-3.5 py-2 rounded-xl border text-sm font-black outline-none ${
+                          isLight ? 'bg-indigo-50/20 border-indigo-200' : 'bg-slate-950 border-slate-700'
+                        }`}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setIsCustomRoom(false)}
+                        className="px-3 py-2 rounded-xl text-xs font-bold border hover:bg-slate-100 transition cursor-pointer"
+                      >
+                        기존 목록 선택
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {/* Multi-tags for Committees & Roles */}
+                <div>
+                  <label className="block text-xs font-bold mb-1.5 text-slate-500 flex items-center justify-between">
+                    <span>소속 위원회 & 교과 그룹 태그 (쪽지/수합 자동 분류)</span>
+                    <span className="text-[11px] text-indigo-600 font-normal">복수 선택 가능</span>
+                  </label>
+                  <div className="flex flex-wrap gap-1.5 mb-2">
+                    {COMMON_TAG_SUGGESTIONS.map((tag) => {
+                      const isSelected = selectedTags.includes(tag);
+                      return (
+                        <button
+                          key={tag}
+                          type="button"
+                          onClick={() => toggleTag(tag)}
+                          className={`text-xs px-2.5 py-1 rounded-xl border font-bold transition cursor-pointer ${
+                            isSelected
+                              ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
+                              : isLight
+                              ? 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-indigo-50'
+                              : 'bg-slate-950 text-slate-300 border-slate-700 hover:bg-slate-800'
+                          }`}
+                        >
+                          {isSelected ? '✓ ' : '+ '} {tag}
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={newTagInput}
+                      onChange={(e) => setNewTagInput(e.target.value)}
+                      placeholder="기타 위원회 직접 입력..."
+                      className={`flex-1 px-3 py-1.5 rounded-xl border text-xs outline-none ${
+                        isLight ? 'bg-indigo-50/20 border-slate-200' : 'bg-slate-950 border-slate-700 text-white'
                       }`}
                     />
                     <button
                       type="button"
-                      onClick={() => setIsCustomRoom(false)}
-                      className={`px-3 py-2 text-xs font-bold rounded-xl border transition ${
-                        isLight
-                          ? 'bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200'
-                          : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700'
-                      }`}
+                      onClick={handleAddCustomTag}
+                      className="px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-xs font-bold border transition cursor-pointer"
                     >
-                      기존 목록 선택
+                      태그 추가
                     </button>
                   </div>
-                )}
-              </div>
+                </div>
 
-              {/* Submit Button */}
-              <button
-                id="btn-submit-teacher"
-                type="submit"
-                disabled={isSubmitting}
-                className="w-full py-3 px-4 rounded-xl text-sm font-black bg-indigo-600 hover:bg-indigo-700 text-white shadow-md shadow-indigo-200 transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
-              >
-                <UserPlus className="w-4 h-4" />
-                <span>{isSubmitting ? '등록 중...' : '교직원 명단에 추가하기'}</span>
-              </button>
-            </form>
-          </div>
-
-          {/* Teacher Roster List */}
-          <div
-            id="teacher-roster-list"
-            className={`rounded-2xl border overflow-hidden transition-all ${
-              isLight
-                ? 'bg-white border-indigo-100 text-slate-900 shadow-sm'
-                : 'bg-slate-900/90 border-slate-800 text-white shadow-xl'
-            }`}
-          >
-            <div
-              className={`p-4 border-b flex items-center justify-between ${
-                isLight
-                  ? 'border-indigo-100 bg-indigo-50/40'
-                  : 'border-slate-800 bg-slate-800/80'
-              }`}
-            >
-              <div className="flex items-center gap-2">
-                <Users className="w-5 h-5 text-indigo-600 dark:text-emerald-400" />
-                <h3 className="font-black text-base">등록된 교직원 명단</h3>
-                <span
-                  className={`text-xs px-2.5 py-0.5 rounded-full font-bold ${
-                    isLight
-                      ? 'bg-indigo-100 text-indigo-800 border border-indigo-200'
-                      : 'bg-slate-800 text-slate-200'
-                  }`}
-                >
-                  총 {teachers.length}명
-                </span>
-              </div>
-            </div>
-
-            {teachers.length === 0 ? (
-              <div
-                className={`p-8 text-center text-sm ${
-                  isLight ? 'text-slate-500' : 'text-slate-400'
-                }`}
-              >
-                등록된 선생님이 없습니다. 위 양식에서 선생님을 등록해주세요.
-              </div>
-            ) : (
-              <div
-                className={`divide-y max-h-96 overflow-y-auto ${
-                  isLight ? 'divide-indigo-100' : 'divide-slate-800'
-                }`}
-              >
-                {teachers.map((teacher) => (
-                  <div
-                    key={teacher.id}
-                    className={`p-4 flex items-center justify-between transition ${
-                      isLight ? 'hover:bg-indigo-50/40' : 'hover:bg-slate-800/40'
-                    }`}
+                <div className="pt-2 text-right">
+                  <button
+                    type="submit"
+                    disabled={isSubmitting}
+                    className="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-black text-xs shadow-md transition cursor-pointer disabled:opacity-50"
                   >
-                    <div className="flex items-center space-x-3">
-                      <div
-                        className={`w-10 h-10 rounded-2xl flex items-center justify-center font-black text-sm border shadow-sm ${getAvatarColor(
-                          teacher.name
-                        )}`}
-                      >
-                        {teacher.name.slice(0, 1)}
-                      </div>
-                      <div>
-                        <div className="font-black text-sm flex items-center gap-2">
-                          <span className={isLight ? 'text-slate-900' : 'text-white'}>
-                            {teacher.name} 선생님
-                          </span>
-                          {teacher.subject && (
-                            <span
-                              className={`text-xs font-semibold px-2 py-0.5 rounded-md ${
-                                isLight
-                                  ? 'bg-slate-100 text-slate-600'
-                                  : 'bg-slate-800 text-slate-400'
-                              }`}
-                            >
-                              {teacher.subject}
-                            </span>
-                          )}
-                        </div>
-                        <div
-                          className={`text-xs flex items-center gap-1 mt-0.5 ${
-                            isLight ? 'text-slate-500' : 'text-slate-400'
-                          }`}
-                        >
-                          <Building2 className="w-3 h-3 text-indigo-500" />
-                          <span>{teacher.room}</span>
-                        </div>
-                      </div>
-                    </div>
+                    {isSubmitting ? '등록 중...' : '선생님 및 위원회 등록 완료'}
+                  </button>
+                </div>
+              </form>
+            ) : (
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold text-slate-500">
+                    엑셀/한글 복사 붙여넣기 (이름 [탭] 교무실 [탭] 과목 [탭] 위원회태그)
+                  </label>
+                  <button
+                    type="button"
+                    onClick={handleFillSample}
+                    className="text-xs text-indigo-600 font-bold hover:underline cursor-pointer"
+                  >
+                    샘플 양식 불러오기
+                  </button>
+                </div>
 
-                    <div className="flex items-center gap-2">
-                      <button
-                        title="QR 코드 보기"
-                        onClick={() => setQrRoom(teacher.room)}
-                        className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition cursor-pointer ${
-                          isLight
-                            ? 'bg-indigo-50 text-indigo-700 border-indigo-200 hover:bg-indigo-100'
-                            : 'bg-slate-800 text-slate-200 border-slate-700 hover:bg-slate-700'
-                        }`}
-                      >
-                        QR 보기
-                      </button>
-                      <button
-                        title="삭제"
-                        onClick={() => handleDeleteTeacher(teacher.id, teacher.name)}
-                        className="p-2 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition cursor-pointer"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
+                <textarea
+                  rows={6}
+                  value={bulkText}
+                  onChange={(e) => setBulkText(e.target.value)}
+                  placeholder="예: 김민준	본관 1교무실	1학년 수학	1학년 담임|수학과|기획위원회"
+                  className={`w-full p-3.5 rounded-2xl border text-xs font-mono leading-relaxed outline-none ${
+                    isLight ? 'bg-indigo-50/20 border-indigo-200' : 'bg-slate-950 border-slate-700'
+                  }`}
+                />
+
+                {bulkSuccessMsg && (
+                  <div className="p-3 rounded-xl bg-emerald-100 text-emerald-800 text-xs font-black flex items-center gap-2">
+                    <CheckCircle2 className="w-4 h-4" />
+                    <span>{bulkSuccessMsg}</span>
                   </div>
-                ))}
+                )}
+
+                <div className="flex items-center justify-between pt-1">
+                  <span className="text-xs font-bold text-slate-400">
+                    인식된 교직원: {parsedBulkTeachers.length}명
+                  </span>
+                  <button
+                    type="button"
+                    onClick={handleBulkSubmit}
+                    disabled={isSubmitting || parsedBulkTeachers.length === 0}
+                    className="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-black text-xs shadow-md transition cursor-pointer disabled:opacity-50"
+                  >
+                    {isSubmitting ? '일괄 등록 중...' : '일괄 등록 실행하기'}
+                  </button>
+                </div>
               </div>
             )}
           </div>
-        </div>
 
-        {/* Right Column: QR Code & Printable Door Placard (5 cols) */}
-        <div className="lg:col-span-5 space-y-6">
+          {/* Roster List Table */}
           <div
-            id="qr-generator-card"
-            className={`p-6 rounded-2xl border text-center transition-all ${
-              isLight
-                ? 'bg-white border-indigo-100 text-slate-900 shadow-sm'
-                : 'bg-slate-900/90 border-slate-800 text-white shadow-xl'
+            className={`p-6 rounded-3xl border transition-all ${
+              isLight ? 'bg-white border-indigo-100 shadow-sm' : 'bg-slate-900 border-slate-800 shadow-xl'
             }`}
           >
-            <div className="flex items-center justify-center gap-2 mb-3">
+            <div className="flex items-center justify-between pb-3 mb-3 border-b border-indigo-50 dark:border-slate-800">
+              <div className="flex items-center gap-2">
+                <Users className="w-4 h-4 text-indigo-500" />
+                <h4 className="font-black text-sm">등록된 전체 선생님 명단 ({teachers.length}명)</h4>
+              </div>
+            </div>
+
+            <div className="divide-y divide-slate-100 dark:divide-slate-800 max-h-[400px] overflow-y-auto">
+              {teachers.map((t) => (
+                <div key={t.id} className="py-3 flex items-center justify-between gap-3">
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <span className="font-black text-sm">👤 {t.name} 선생님</span>
+                      <span className="text-xs text-slate-500">({t.room})</span>
+                      {t.subject && (
+                        <span className="text-xs px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-bold">
+                          {t.subject}
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Tags */}
+                    {t.tags && t.tags.length > 0 && (
+                      <div className="flex flex-wrap gap-1">
+                        {t.tags.map((tag, i) => (
+                          <span
+                            key={i}
+                            className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-indigo-50 dark:bg-slate-800 text-indigo-700 dark:text-emerald-400 border border-indigo-100 dark:border-slate-700"
+                          >
+                            🏷️ {tag}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  <button
+                    onClick={() => handleDeleteTeacher(t.id, t.name)}
+                    className="p-1.5 text-slate-400 hover:text-rose-600 transition cursor-pointer"
+                    title="선생님 삭제"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Right Column: QR Placard Generator (5 cols) */}
+        <div className="lg:col-span-5 space-y-6">
+          <div
+            className={`p-6 rounded-3xl border transition-all ${
+              isLight ? 'bg-white border-indigo-100 shadow-sm' : 'bg-slate-900 border-slate-800 shadow-xl'
+            }`}
+          >
+            <div className="flex items-center gap-2 mb-4">
               <QrCode className="w-5 h-5 text-indigo-600 dark:text-emerald-400" />
-              <h3 className="font-black text-lg">교무실 출입문 부착용 QR</h3>
+              <h3 className="font-black text-lg">교무실별 출입문 QR 생성</h3>
             </div>
 
-            {/* Target Room Selector for QR */}
-            <div className="mb-5">
-              <label
-                className={`block text-xs font-bold mb-1 text-left ${
-                  isLight ? 'text-slate-600' : 'text-slate-400'
-                }`}
-              >
-                QR 생성 대상 교무실 선택:
-              </label>
-              <select
-                id="select-qr-target-room"
-                value={qrRoom}
-                onChange={(e) => setQrRoom(e.target.value)}
-                className={`w-full px-3.5 py-2.5 rounded-xl text-sm font-bold border outline-none cursor-pointer transition ${
-                  isLight
-                    ? 'bg-indigo-50/50 border-indigo-200 text-indigo-800'
-                    : 'bg-slate-950 border-slate-700 text-emerald-300'
-                }`}
-              >
-                {distinctRooms.map((r) => (
-                  <option key={r} value={r}>
-                    📍 {r}
-                  </option>
-                ))}
-              </select>
-            </div>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-xs font-bold mb-1 text-slate-500">인쇄할 교무실 선택</label>
+                <select
+                  value={qrRoom}
+                  onChange={(e) => setQrRoom(e.target.value)}
+                  className={`w-full px-3.5 py-2 rounded-xl border text-sm font-black outline-none ${
+                    isLight ? 'bg-indigo-50/20 border-indigo-200' : 'bg-slate-950 border-slate-700'
+                  }`}
+                >
+                  {distinctRooms.map((r) => (
+                    <option key={r} value={r}>
+                      📍 {r}
+                    </option>
+                  ))}
+                </select>
+              </div>
 
-            {/* QR Code Container */}
-            <div className="bg-white p-5 rounded-2xl inline-block shadow-md mx-auto border-2 border-indigo-100">
-              <QRCodeSVG
-                value={studentUrl}
-                size={220}
-                level="H"
-                includeMargin={false}
-              />
-            </div>
+              {/* QR Code Center Display */}
+              <div className="p-6 rounded-3xl bg-white text-slate-900 border border-slate-200 text-center shadow-inner space-y-3">
+                <div className="text-xs font-black text-indigo-700 tracking-wider">
+                  [{qrRoom}] 출입문 부착용 QR
+                </div>
+                <div className="flex justify-center p-3 bg-white rounded-2xl">
+                  <QRCodeSVG value={studentUrl} size={180} level="H" includeMargin />
+                </div>
+                <div className="text-[11px] text-slate-400 font-mono break-all">{studentUrl}</div>
+              </div>
 
-            <div className="mt-4">
-              <p className="font-black text-base text-indigo-600 dark:text-emerald-400">
-                [{qrRoom}]
-              </p>
-              <p
-                className={`text-xs mt-0.5 ${
-                  isLight ? 'text-slate-500' : 'text-slate-400'
-                }`}
-              >
-                학생이 스마트폰 카메라로 QR을 스캔하면 이 교무실의 선생님 목록이 열립니다.
-              </p>
-            </div>
+              {/* Actions */}
+              <div className="space-y-2">
+                <button
+                  onClick={() => onOpenPlacard(qrRoom)}
+                  className="w-full py-3 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white font-black text-xs shadow-md flex items-center justify-center gap-1.5 transition cursor-pointer"
+                >
+                  <Printer className="w-4 h-4" />
+                  <span>A4 문앞 부착 안내판 인쇄하기</span>
+                </button>
 
-            {/* Action Buttons: Print Placard & Copy link & Test View */}
-            <div className="grid grid-cols-1 gap-2.5 mt-6">
-              {/* Print Door Placard Modal Trigger */}
-              <button
-                id="btn-print-door-placard"
-                onClick={() => onOpenPlacard(qrRoom)}
-                className="w-full py-3 px-4 rounded-xl text-sm font-black bg-indigo-600 hover:bg-indigo-700 text-white shadow-md shadow-indigo-200 transition flex items-center justify-center gap-2 cursor-pointer"
-              >
-                <Printer className="w-4 h-4" />
-                <span>출력용 A4 교무실 부착판 인쇄하기</span>
-              </button>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    onClick={handleCopyLink}
+                    className="py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-bold flex items-center justify-center gap-1 hover:bg-slate-50 dark:hover:bg-slate-800 transition cursor-pointer"
+                  >
+                    <Copy className="w-3.5 h-3.5" />
+                    <span>{copiedLink ? '복사됨!' : '링크 복사'}</span>
+                  </button>
 
-              {/* Copy URL */}
-              <button
-                id="btn-copy-student-url"
-                onClick={handleCopyLink}
-                className={`w-full py-2.5 px-4 rounded-xl text-xs font-bold border transition flex items-center justify-center gap-2 cursor-pointer ${
-                  copiedLink
-                    ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
-                    : isLight
-                    ? 'bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200'
-                    : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700'
-                }`}
-              >
-                {copiedLink ? (
-                  <Check className="w-4 h-4 text-emerald-600" />
-                ) : (
-                  <Copy className="w-4 h-4" />
-                )}
-                <span>{copiedLink ? '학생 접속 주소 복사 완료!' : '학생 접속 링크 복사'}</span>
-              </button>
-
-              {/* Direct Open Student Screen */}
-              <button
-                id="btn-test-student-view"
-                onClick={() => onNavigateToStudentView(qrRoom)}
-                className={`w-full py-2 px-4 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer ${
-                  isLight
-                    ? 'text-indigo-600 hover:bg-indigo-50'
-                    : 'text-slate-400 hover:text-white'
-                }`}
-              >
-                <ExternalLink className="w-3.5 h-3.5" />
-                <span>학생 화면 바로 체험해보기</span>
-              </button>
+                  <button
+                    onClick={() => onNavigateToStudentView(qrRoom)}
+                    className="py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-bold flex items-center justify-center gap-1 hover:bg-slate-50 dark:hover:bg-slate-800 transition cursor-pointer"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" />
+                    <span>학생 화면 열기</span>
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
         </div>
