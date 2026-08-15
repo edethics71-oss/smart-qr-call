@@ -20,20 +20,35 @@ import {
 import type { Teacher, ThemeType } from './types';
 
 export default function App() {
-  // Routing state
-  const [currentPath, setCurrentPath] = useState<string>(() => {
-    if (typeof window !== 'undefined') {
-      return window.location.pathname || '/teacher';
+  // Helper to parse routing from current browser location
+  const parseLocation = () => {
+    if (typeof window === 'undefined') {
+      return { path: '/teacher', params: new URLSearchParams() };
     }
-    return '/teacher';
-  });
+    const pathname = window.location.pathname || '/teacher';
+    const search = window.location.search;
+    const hash = window.location.hash;
 
-  const [searchParams, setSearchParams] = useState<URLSearchParams>(() => {
-    if (typeof window !== 'undefined') {
-      return new URLSearchParams(window.location.search);
+    // Check if path or hash or query specifies student
+    let effectivePath = pathname;
+    let effectiveParams = new URLSearchParams(search);
+
+    if (hash.startsWith('#/student') || hash.startsWith('#student')) {
+      effectivePath = '/student';
+      const hashQueryIndex = hash.indexOf('?');
+      if (hashQueryIndex !== -1) {
+        effectiveParams = new URLSearchParams(hash.substring(hashQueryIndex));
+      }
+    } else if (effectiveParams.get('view') === 'student') {
+      effectivePath = '/student';
     }
-    return new URLSearchParams();
-  });
+
+    return { path: effectivePath, params: effectiveParams };
+  };
+
+  const initialLoc = parseLocation();
+  const [currentPath, setCurrentPath] = useState<string>(initialLoc.path);
+  const [searchParams, setSearchParams] = useState<URLSearchParams>(initialLoc.params);
 
   // Teacher portal sub-view: 'receiver' | 'management'
   const [teacherSubTab, setTeacherSubTab] = useState<'receiver' | 'management'>('receiver');
@@ -56,14 +71,19 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
-  // Listen to browser popstate (back/forward buttons)
+  // Listen to browser popstate and hashchange (back/forward buttons or hash nav)
   useEffect(() => {
-    const handlePopState = () => {
-      setCurrentPath(window.location.pathname || '/teacher');
-      setSearchParams(new URLSearchParams(window.location.search));
+    const handleLocationChange = () => {
+      const { path, params } = parseLocation();
+      setCurrentPath(path);
+      setSearchParams(params);
     };
-    window.addEventListener('popstate', handlePopState);
-    return () => window.removeEventListener('popstate', handlePopState);
+    window.addEventListener('popstate', handleLocationChange);
+    window.addEventListener('hashchange', handleLocationChange);
+    return () => {
+      window.removeEventListener('popstate', handleLocationChange);
+      window.removeEventListener('hashchange', handleLocationChange);
+    };
   }, []);
 
   // Navigation handler
