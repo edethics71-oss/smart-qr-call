@@ -16,10 +16,14 @@ import {
   Check,
   Flame,
   Radio,
-  FileText
+  FileText,
+  Smartphone
 } from 'lucide-react';
+import { QRCodeSVG } from 'qrcode.react';
 import { dbService } from '../lib/firebase';
-import type { Teacher, TeacherCallToStudent, SchoolNotice, ThemeType, NoticeType } from '../types';
+import { getStudentDirectLoginUrl } from '../lib/urlUtils';
+import type { Teacher, TeacherCallToStudent, SchoolNotice, ThemeType, NoticeType, StudentRecord } from '../types';
+import { VirtualStudentSimulatorModal } from './VirtualStudentSimulatorModal';
 
 interface TeacherToStudentDispatchProps {
   theme: ThemeType;
@@ -65,19 +69,24 @@ export const TeacherToStudentDispatch: React.FC<TeacherToStudentDispatchProps> =
 
   // Form states for School / Grade / Department Notice
   const [schoolNoticeType, setSchoolNoticeType] = useState<NoticeType>('grade');
-  const [snTargetGrade, setSnTargetGrade] = useState<number>(1); // 0 = all
+  const [snTargetGrades, setSnTargetGrades] = useState<number[]>([1]); // multi-select [1], [1, 2], [2, 3], etc.
   const [snTargetClass, setSnTargetClass] = useState<number>(0); // 0 = all
   const [snDepartment, setSnDepartment] = useState<string>('교무기획부');
+  const [snCustomDepartment, setSnCustomDepartment] = useState<string>('');
+  const [snAudience, setSnAudience] = useState<'all' | 'teachers' | 'students'>('students');
+  const [snDeptStudentGrades, setSnDeptStudentGrades] = useState<number[]>([1, 2, 3]); // when students chosen in dept
   const [snTitle, setSnTitle] = useState<string>('');
   const [snContent, setSnContent] = useState<string>('');
   const [snIsUrgent, setSnIsUrgent] = useState<boolean>(false);
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [successToast, setSuccessToast] = useState('');
+  const [isSimulatorOpen, setIsSimulatorOpen] = useState(false);
 
   // Live Subscriptions
   const [activeTeacherCalls, setActiveTeacherCalls] = useState<TeacherCallToStudent[]>([]);
   const [activeNotices, setActiveNotices] = useState<SchoolNotice[]>([]);
+  const [classRoster, setClassRoster] = useState<StudentRecord[]>([]);
 
   useEffect(() => {
     if (prefilledStudentName) {
@@ -85,6 +94,18 @@ export const TeacherToStudentDispatch: React.FC<TeacherToStudentDispatchProps> =
       setDispatchMode('call_student');
     }
   }, [prefilledStudentName]);
+
+  // Subscribe to students in the selected class
+  useEffect(() => {
+    const unsubStudents = dbService.subscribeStudents(
+      (list) => {
+        setClassRoster(list);
+      },
+      callGrade,
+      callClass
+    );
+    return () => unsubStudents();
+  }, [callGrade, callClass]);
 
   useEffect(() => {
     const unsubCalls = dbService.subscribeTeacherCallsToStudent((list) => {
@@ -199,14 +220,42 @@ export const TeacherToStudentDispatch: React.FC<TeacherToStudentDispatchProps> =
       return;
     }
 
+    if (schoolNoticeType === 'grade' && snTargetGrades.length === 0) {
+      alert('대상 학년을 최소 1개 이상 선택해주세요 (예: 1학년, 2학년, 3학년).');
+      return;
+    }
+
+    if (schoolNoticeType === 'department' && snAudience === 'students' && snDeptStudentGrades.length === 0) {
+      alert('학생 수신 대상 학년을 최소 1개 이상 선택해주세요.');
+      return;
+    }
+
     setIsSubmitting(true);
     try {
-      const roleStr =
-        schoolNoticeType === 'department'
-          ? snDepartment
-          : schoolNoticeType === 'grade'
-          ? `${snTargetGrade}학년 부장`
-          : '교무기획부';
+      const activeDept = snCustomDepartment.trim() || snDepartment;
+      let roleStr = '교무기획부';
+      let finalTargetGrades: number[] = [];
+      let finalTargetAudience: 'all' | 'teachers' | 'students' = 'all';
+
+      if (schoolNoticeType === 'grade') {
+        const sortedGrades = [...snTargetGrades].sort((a, b) => a - b);
+        roleStr = `${sortedGrades.join('·')}학년 부장`;
+        finalTargetGrades = sortedGrades;
+        finalTargetAudience = 'students';
+      } else if (schoolNoticeType === 'department') {
+        roleStr = activeDept;
+        finalTargetAudience = snAudience;
+        if (snAudience === 'students') {
+          finalTargetGrades = [...snDeptStudentGrades].sort((a, b) => a - b);
+        } else {
+          finalTargetGrades = [1, 2, 3];
+        }
+      } else {
+        // 'school'
+        roleStr = '학교운영위원회 / 교무기획부';
+        finalTargetGrades = [1, 2, 3];
+        finalTargetAudience = 'all';
+      }
 
       await dbService.addSchoolNotice({
         type: schoolNoticeType,
@@ -214,14 +263,16 @@ export const TeacherToStudentDispatch: React.FC<TeacherToStudentDispatchProps> =
         content: snContent.trim(),
         senderName: currentTeacherObj?.name || '담당교사',
         senderRole: roleStr,
-        targetGrade: Number(snTargetGrade),
+        targetGrade: finalTargetGrades.length === 1 ? finalTargetGrades[0] : 0,
+        targetGrades: finalTargetGrades,
         targetClass: Number(snTargetClass),
-        targetDepartment: schoolNoticeType === 'department' ? snDepartment : undefined,
+        targetDepartment: schoolNoticeType === 'department' ? activeDept : undefined,
+        targetAudience: finalTargetAudience,
         isUrgent: snIsUrgent,
         date: new Date().toISOString().slice(0, 10),
       });
 
-      showToast(`📢 학교 공지사항이 성공적으로 전달되었습니다!`);
+      showToast(`📢 [${roleStr}] 공지사항이 성공적으로 배포되었습니다!`);
       setSnTitle('');
       setSnContent('');
       setSnIsUrgent(false);
@@ -250,6 +301,11 @@ export const TeacherToStudentDispatch: React.FC<TeacherToStudentDispatchProps> =
     return `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
   };
 
+  const [showTestQrModal, setShowTestQrModal] = useState(false);
+  const hongGilDongTestUrl = useMemo(() => {
+    return getStudentDirectLoginUrl(1, 3, 1, '홍길동');
+  }, []);
+
   return (
     <div className="space-y-8">
       {/* Toast */}
@@ -271,28 +327,30 @@ export const TeacherToStudentDispatch: React.FC<TeacherToStudentDispatchProps> =
           </p>
         </div>
 
-        {/* Sender Teacher Selector */}
-        <div
-          className={`flex items-center gap-2 p-2 rounded-2xl border text-xs font-bold ${
-            isLight ? 'bg-white border-indigo-100' : 'bg-slate-900 border-slate-800'
-          }`}
-        >
-          <span className={isLight ? 'text-slate-500' : 'text-slate-400'}>발신 교사:</span>
-          <select
-            value={selectedTeacherName}
-            onChange={(e) => setSelectedTeacherName(e.target.value)}
-            className={`px-2.5 py-1.5 rounded-xl border outline-none font-black cursor-pointer ${
-              isLight
-                ? 'bg-indigo-50 border-indigo-200 text-indigo-900'
-                : 'bg-slate-800 border-slate-700 text-emerald-300'
+        {/* Action Controls & Sender Teacher Selector */}
+        <div className="flex flex-wrap items-center gap-2">
+          <div
+            className={`flex items-center gap-2 p-1.5 rounded-2xl border text-xs font-bold ${
+              isLight ? 'bg-white border-indigo-100' : 'bg-slate-900 border-slate-800'
             }`}
           >
-            {teachers.map((t) => (
-              <option key={t.id} value={t.name}>
-                🧑‍🏫 {t.name} 선생님 ({t.room})
-              </option>
-            ))}
-          </select>
+            <span className={isLight ? 'text-slate-500' : 'text-slate-400'}>발신:</span>
+            <select
+              value={selectedTeacherName}
+              onChange={(e) => setSelectedTeacherName(e.target.value)}
+              className={`px-2.5 py-1.5 rounded-xl border outline-none font-black cursor-pointer ${
+                isLight
+                  ? 'bg-indigo-50 border-indigo-200 text-indigo-900'
+                  : 'bg-slate-800 border-slate-700 text-emerald-300'
+              }`}
+            >
+              {teachers.map((t) => (
+                <option key={t.id} value={t.name}>
+                  🧑‍🏫 {t.name} ({t.room})
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
       </div>
 
@@ -442,7 +500,7 @@ export const TeacherToStudentDispatch: React.FC<TeacherToStudentDispatchProps> =
                         isLight ? 'bg-indigo-50/40 border-indigo-200' : 'bg-slate-950 border-slate-700'
                       }`}
                     >
-                      {Array.from({ length: 12 }, (_, i) => i + 1).map((c) => (
+                      {Array.from({ length: 7 }, (_, i) => i + 1).map((c) => (
                         <option key={c} value={c}>
                           {c}반
                         </option>
@@ -476,6 +534,60 @@ export const TeacherToStudentDispatch: React.FC<TeacherToStudentDispatchProps> =
                         isLight ? 'bg-indigo-50/40 border-indigo-200' : 'bg-slate-950 border-slate-700'
                       }`}
                     />
+                  </div>
+                </div>
+
+                {/* Quick Student Selection from Registered Roster */}
+                <div className="p-3 rounded-2xl border bg-slate-50/60 dark:bg-slate-950/40 border-slate-200 dark:border-slate-800">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-[11px] font-bold text-slate-600 dark:text-slate-400 flex items-center gap-1.5">
+                      <Users className="w-3.5 h-3.5 text-indigo-600" />
+                      <span>{callGrade}학년 {callClass}반 등록 학생 명렬 ({classRoster.length}명) - 클릭 시 자동 입력:</span>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCallNumber('');
+                        setCallStudentName(`${callGrade}학년 ${callClass}반 학생 전체`);
+                      }}
+                      className="text-[11px] font-bold text-indigo-600 hover:underline cursor-pointer"
+                    >
+                      📢 학급 전체 지정
+                    </button>
+                  </div>
+
+                  <div className="flex flex-wrap gap-1.5 max-h-28 overflow-y-auto pr-1">
+                    {classRoster.length === 0 ? (
+                      <span className="text-[11px] text-slate-400">
+                        등록된 학생이 없습니다. 상단 '학생 명렬 관리'에서 명단을 등록해보세요.
+                      </span>
+                    ) : (
+                      classRoster.map((std) => (
+                        <button
+                          key={std.id}
+                          type="button"
+                          onClick={() => {
+                            setCallNumber(String(std.studentNumber));
+                            setCallStudentName(std.name);
+                          }}
+                          className={`text-xs px-2.5 py-1 rounded-xl border font-bold transition flex items-center gap-1 cursor-pointer ${
+                            callStudentName === std.name && Number(callNumber) === std.studentNumber
+                              ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
+                              : isLight
+                              ? 'bg-white text-slate-700 border-slate-200 hover:bg-indigo-50 hover:border-indigo-300'
+                              : 'bg-slate-900 text-slate-300 border-slate-700 hover:bg-slate-800'
+                          }`}
+                        >
+                          <span className="text-[10px] text-indigo-400 font-bold">{std.studentNumber}번</span>
+                          <span>{std.name}</span>
+                          {std.notes && (
+                            <span className="text-[9px] px-1 py-0.2 bg-indigo-100 dark:bg-indigo-950 text-indigo-700 rounded">
+                              {std.notes}
+                            </span>
+                          )}
+                        </button>
+                      ))
+                    )}
                   </div>
                 </div>
 
@@ -608,7 +720,7 @@ export const TeacherToStudentDispatch: React.FC<TeacherToStudentDispatchProps> =
                         isLight ? 'bg-indigo-50/40 border-indigo-200' : 'bg-slate-950 border-slate-700'
                       }`}
                     >
-                      {Array.from({ length: 12 }, (_, i) => i + 1).map((c) => (
+                      {Array.from({ length: 7 }, (_, i) => i + 1).map((c) => (
                         <option key={c} value={c}>
                           {c}반
                         </option>
@@ -711,56 +823,323 @@ export const TeacherToStudentDispatch: React.FC<TeacherToStudentDispatchProps> =
                   <h3 className="font-black text-lg">학년 / 부서 / 전교생 공지 전달</h3>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div className="space-y-4">
+                  {/* 1. 공지 분류 선택 */}
                   <div>
-                    <label className="block text-xs font-bold mb-1 text-slate-500">공지 분류</label>
-                    <select
-                      value={schoolNoticeType}
-                      onChange={(e) => setSchoolNoticeType(e.target.value as NoticeType)}
-                      className={`w-full px-3 py-2.5 rounded-xl border text-sm font-bold outline-none ${
-                        isLight ? 'bg-indigo-50/40 border-indigo-200' : 'bg-slate-950 border-slate-700'
-                      }`}
-                    >
-                      <option value="grade">🏫 특정 학년 전체 공지</option>
-                      <option value="department">🏢 행정/교과 부서별 공지</option>
-                      <option value="school">🌟 전교생 전체 공지</option>
-                    </select>
-                  </div>
-
-                  {schoolNoticeType === 'grade' && (
-                    <div>
-                      <label className="block text-xs font-bold mb-1 text-slate-500">대상 학년</label>
-                      <select
-                        value={snTargetGrade}
-                        onChange={(e) => setSnTargetGrade(Number(e.target.value))}
-                        className={`w-full px-3 py-2.5 rounded-xl border text-sm font-bold outline-none ${
-                          isLight ? 'bg-indigo-50/40 border-indigo-200' : 'bg-slate-950 border-slate-700'
+                    <label className="block text-xs font-bold mb-1.5 text-slate-500">공지 분류</label>
+                    <div className="grid grid-cols-3 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setSchoolNoticeType('grade')}
+                        className={`p-2.5 rounded-xl border text-xs font-black transition flex items-center justify-center gap-1.5 cursor-pointer ${
+                          schoolNoticeType === 'grade'
+                            ? 'bg-purple-600 text-white border-purple-600 shadow-md shadow-purple-600/20'
+                            : isLight
+                            ? 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-purple-50'
+                            : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700'
                         }`}
                       >
-                        <option value={1}>1학년 전체</option>
-                        <option value={2}>2학년 전체</option>
-                        <option value={3}>3학년 전체</option>
-                      </select>
+                        <span>🏫 특정 학년 전체 공지</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setSchoolNoticeType('department')}
+                        className={`p-2.5 rounded-xl border text-xs font-black transition flex items-center justify-center gap-1.5 cursor-pointer ${
+                          schoolNoticeType === 'department'
+                            ? 'bg-purple-600 text-white border-purple-600 shadow-md shadow-purple-600/20'
+                            : isLight
+                            ? 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-purple-50'
+                            : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700'
+                        }`}
+                      >
+                        <span>🏢 행정/교과 부서별 공지</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setSchoolNoticeType('school')}
+                        className={`p-2.5 rounded-xl border text-xs font-black transition flex items-center justify-center gap-1.5 cursor-pointer ${
+                          schoolNoticeType === 'school'
+                            ? 'bg-purple-600 text-white border-purple-600 shadow-md shadow-purple-600/20'
+                            : isLight
+                            ? 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-purple-50'
+                            : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700'
+                        }`}
+                      >
+                        <span>🌟 전교생 전체 공지</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* 2-A. 특정 학년 공지: 1, 2, 3학년 복수 선택 (1,2학년, 2,3학년, 1,3학년, 1,2,3학년 등) */}
+                  {schoolNoticeType === 'grade' && (
+                    <div className="p-4 rounded-2xl border bg-purple-50/40 dark:bg-purple-950/20 border-purple-200 dark:border-purple-900/50 space-y-2.5">
+                      <div className="flex items-center justify-between">
+                        <label className="text-xs font-black text-purple-900 dark:text-purple-200 flex items-center gap-1.5">
+                          <Users className="w-4 h-4 text-purple-600 dark:text-purple-400" />
+                          <span>수신 대상 학년 선택 (복수 선택 가능):</span>
+                        </label>
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => setSnTargetGrades([1, 2, 3])}
+                            className="text-[11px] px-2 py-0.5 rounded-md font-bold text-purple-700 hover:bg-purple-100 dark:text-purple-300 dark:hover:bg-purple-900/50 cursor-pointer"
+                          >
+                            전학년(1·2·3)
+                          </button>
+                          <span className="text-purple-300">|</span>
+                          <button
+                            type="button"
+                            onClick={() => setSnTargetGrades([1, 2])}
+                            className="text-[11px] px-2 py-0.5 rounded-md font-bold text-purple-700 hover:bg-purple-100 dark:text-purple-300 dark:hover:bg-purple-900/50 cursor-pointer"
+                          >
+                            1·2학년
+                          </button>
+                          <span className="text-purple-300">|</span>
+                          <button
+                            type="button"
+                            onClick={() => setSnTargetGrades([2, 3])}
+                            className="text-[11px] px-2 py-0.5 rounded-md font-bold text-purple-700 hover:bg-purple-100 dark:text-purple-300 dark:hover:bg-purple-900/50 cursor-pointer"
+                          >
+                            2·3학년
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-3 gap-2">
+                        {[1, 2, 3].map((grade) => {
+                          const isSelected = snTargetGrades.includes(grade);
+                          return (
+                            <button
+                              key={grade}
+                              type="button"
+                              onClick={() => {
+                                if (isSelected) {
+                                  if (snTargetGrades.length > 1) {
+                                    setSnTargetGrades(snTargetGrades.filter((g) => g !== grade));
+                                  } else {
+                                    alert('최소 1개 이상의 학년을 선택해야 합니다.');
+                                  }
+                                } else {
+                                  setSnTargetGrades([...snTargetGrades, grade]);
+                                }
+                              }}
+                              className={`py-3 px-3 rounded-xl border text-sm font-black transition flex items-center justify-center gap-2 cursor-pointer ${
+                                isSelected
+                                  ? 'bg-purple-600 text-white border-purple-600 shadow-sm ring-2 ring-purple-400/40'
+                                  : isLight
+                                  ? 'bg-white text-slate-700 border-slate-200 hover:border-purple-300'
+                                  : 'bg-slate-900 text-slate-300 border-slate-700 hover:bg-slate-800'
+                              }`}
+                            >
+                              <div
+                                className={`w-4 h-4 rounded flex items-center justify-center text-xs ${
+                                  isSelected ? 'bg-white text-purple-600' : 'border border-slate-300 dark:border-slate-600'
+                                }`}
+                              >
+                                {isSelected && <Check className="w-3 h-3 stroke-[3]" />}
+                              </div>
+                              <span>{grade}학년</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+
+                      <p className="text-[11px] text-purple-700/80 dark:text-purple-300 font-medium">
+                        📌 현재 선택된 대상: <strong>{[...snTargetGrades].sort((a, b) => a - b).map((g) => `${g}학년`).join(', ')}</strong> 전체 학생
+                      </p>
                     </div>
                   )}
 
+                  {/* 2-B. 행정/교과 부서별 공지: 발신 부서 선택 + 수신 대상(교원/학생) 구분 + 학생 대상 학년 선택 */}
                   {schoolNoticeType === 'department' && (
-                    <div>
-                      <label className="block text-xs font-bold mb-1 text-slate-500">발신 부서</label>
-                      <select
-                        value={snDepartment}
-                        onChange={(e) => setSnDepartment(e.target.value)}
-                        className={`w-full px-3 py-2.5 rounded-xl border text-sm font-bold outline-none ${
-                          isLight ? 'bg-indigo-50/40 border-indigo-200' : 'bg-slate-950 border-slate-700'
-                        }`}
-                      >
-                        <option value="교무기획부">교무기획부</option>
-                        <option value="학생생활안전부">학생생활안전부</option>
-                        <option value="교육연구부/도서관">교육연구부 (도서관)</option>
-                        <option value="진로진학상담부">진로진학상담부</option>
-                        <option value="체육보건부">체육보건부</option>
-                        <option value="정보과학부">정보과학부</option>
-                      </select>
+                    <div className="p-4 rounded-2xl border bg-purple-50/40 dark:bg-purple-950/20 border-purple-200 dark:border-purple-900/50 space-y-4">
+                      {/* 발신 부서 선택 (드롭박스) */}
+                      <div>
+                        <label className="block text-xs font-black text-purple-900 dark:text-purple-200 mb-1.5 flex items-center justify-between">
+                          <span>🏢 발신 부서 선택</span>
+                          <span className="text-[11px] font-normal text-slate-500">부서를 드롭다운에서 선택하세요</span>
+                        </label>
+                        <select
+                          value={snCustomDepartment ? 'custom' : snDepartment}
+                          onChange={(e) => {
+                            if (e.target.value === 'custom') {
+                              setSnCustomDepartment(snCustomDepartment || '방송부');
+                            } else {
+                              setSnDepartment(e.target.value);
+                              setSnCustomDepartment('');
+                            }
+                          }}
+                          className={`w-full px-3.5 py-2.5 rounded-xl border text-sm font-bold outline-none cursor-pointer ${
+                            isLight
+                              ? 'bg-white border-purple-200 text-slate-800 focus:border-purple-500'
+                              : 'bg-slate-900 border-slate-700 text-slate-200 focus:border-purple-400'
+                          }`}
+                        >
+                          <optgroup label="학교 행정/기획 부서">
+                            <option value="교무기획부">교무기획부</option>
+                            <option value="교육연구부/도서관">교육연구부 (도서관)</option>
+                            <option value="학생생활안전부">학생생활안전부</option>
+                            <option value="진로진학상담부">진로진학상담부</option>
+                            <option value="체육보건부">체육보건부</option>
+                            <option value="정보과학부">정보과학부</option>
+                          </optgroup>
+                          <optgroup label="교과 부서">
+                            <option value="인문사회교과부">인문사회교과부 (국어·사회·도덕)</option>
+                            <option value="수리과학교과부">수리과학교과부 (수학·과학·정보)</option>
+                            <option value="외국어교과부">외국어교과부 (영어·제2외국어)</option>
+                            <option value="예체능교과부">예체능교과부 (음악·미술·체육)</option>
+                          </optgroup>
+                          <optgroup label="특별실 / 상담 / 지원">
+                            <option value="Wee클래스(상담실)">Wee클래스 (전문상담실)</option>
+                            <option value="보건실">보건실</option>
+                            <option value="급식실/영양실">급식실 / 영양실</option>
+                            <option value="방송부">방송부 / 미디어센터</option>
+                          </optgroup>
+                          <optgroup label="직접 입력">
+                            <option value="custom">✍️ 직접 입력 (기타 위원회·동아리·특별부서)</option>
+                          </optgroup>
+                        </select>
+
+                        {(snCustomDepartment !== '' || snDepartment === 'custom') && (
+                          <div className="mt-2 flex items-center gap-2">
+                            <span className="text-[11px] text-purple-700 dark:text-purple-300 font-bold whitespace-nowrap">
+                              부서명 직접입력:
+                            </span>
+                            <input
+                              type="text"
+                              value={snCustomDepartment}
+                              onChange={(e) => setSnCustomDepartment(e.target.value)}
+                              placeholder="예: 영재학급운영부, 교권보호위원회 등"
+                              autoFocus
+                              className={`w-full px-3 py-2 rounded-xl border text-xs font-bold outline-none ${
+                                isLight ? 'bg-white border-purple-300' : 'bg-slate-900 border-slate-700'
+                              }`}
+                            />
+                          </div>
+                        )}
+                      </div>
+
+                      {/* 수신 대상 구분 (교원 vs 학생) */}
+                      <div className="pt-3 border-t border-purple-200/60 dark:border-purple-900/60">
+                        <label className="block text-xs font-black text-purple-900 dark:text-purple-200 mb-1.5">
+                          🎯 수신 대상 구분
+                        </label>
+                        <div className="grid grid-cols-3 gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setSnAudience('students')}
+                            className={`py-2.5 px-3 rounded-xl border text-xs font-black transition flex items-center justify-center gap-1.5 cursor-pointer ${
+                              snAudience === 'students'
+                                ? 'bg-purple-600 text-white border-purple-600 shadow-sm ring-2 ring-purple-400/40'
+                                : isLight
+                                ? 'bg-white text-slate-700 border-slate-200'
+                                : 'bg-slate-900 text-slate-300 border-slate-700'
+                            }`}
+                          >
+                            <Users className="w-3.5 h-3.5" />
+                            <span>학생 대상</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => setSnAudience('teachers')}
+                            className={`py-2.5 px-3 rounded-xl border text-xs font-black transition flex items-center justify-center gap-1.5 cursor-pointer ${
+                              snAudience === 'teachers'
+                                ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm ring-2 ring-indigo-400/40'
+                                : isLight
+                                ? 'bg-white text-slate-700 border-slate-200'
+                                : 'bg-slate-900 text-slate-300 border-slate-700'
+                            }`}
+                          >
+                            <Building2 className="w-3.5 h-3.5" />
+                            <span>교원 (교직원) 대상</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => setSnAudience('all')}
+                            className={`py-2.5 px-3 rounded-xl border text-xs font-black transition flex items-center justify-center gap-1.5 cursor-pointer ${
+                              snAudience === 'all'
+                                ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm ring-2 ring-emerald-400/40'
+                                : isLight
+                                ? 'bg-white text-slate-700 border-slate-200'
+                                : 'bg-slate-900 text-slate-300 border-slate-700'
+                            }`}
+                          >
+                            <Sparkles className="w-3.5 h-3.5" />
+                            <span>교원 및 학생 전체</span>
+                          </button>
+                        </div>
+
+                        {/* 학생 대상일 때 학년 선택 (1, 2, 3학년 복수/전체 선택 가능) */}
+                        {snAudience === 'students' && (
+                          <div className="mt-3 p-3 rounded-xl bg-white dark:bg-slate-900 border border-purple-200 dark:border-purple-800 space-y-2">
+                            <div className="flex items-center justify-between">
+                              <span className="text-[11px] font-black text-purple-900 dark:text-purple-200">
+                                학생 수신 학년 선택 (1·2·3학년 전체 또는 특정 학년 조합):
+                              </span>
+                              <div className="flex items-center gap-1">
+                                <button
+                                  type="button"
+                                  onClick={() => setSnDeptStudentGrades([1, 2, 3])}
+                                  className="text-[10px] px-1.5 py-0.5 rounded font-bold bg-purple-100 text-purple-800 dark:bg-purple-900/60 dark:text-purple-200 cursor-pointer"
+                                >
+                                  전체(1·2·3)
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setSnDeptStudentGrades([1, 2])}
+                                  className="text-[10px] px-1.5 py-0.5 rounded font-bold bg-purple-100 text-purple-800 dark:bg-purple-900/60 dark:text-purple-200 cursor-pointer"
+                                >
+                                  1·2학년
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setSnDeptStudentGrades([2, 3])}
+                                  className="text-[10px] px-1.5 py-0.5 rounded font-bold bg-purple-100 text-purple-800 dark:bg-purple-900/60 dark:text-purple-200 cursor-pointer"
+                                >
+                                  2·3학년
+                                </button>
+                              </div>
+                            </div>
+
+                            <div className="grid grid-cols-3 gap-2">
+                              {[1, 2, 3].map((g) => {
+                                const isGSelected = snDeptStudentGrades.includes(g);
+                                return (
+                                  <button
+                                    key={g}
+                                    type="button"
+                                    onClick={() => {
+                                      if (isGSelected) {
+                                        if (snDeptStudentGrades.length > 1) {
+                                          setSnDeptStudentGrades(snDeptStudentGrades.filter((x) => x !== g));
+                                        } else {
+                                          alert('최소 1개 이상의 학년을 선택해주세요.');
+                                        }
+                                      } else {
+                                        setSnDeptStudentGrades([...snDeptStudentGrades, g]);
+                                      }
+                                    }}
+                                    className={`py-2 px-2 rounded-lg border text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer ${
+                                      isGSelected
+                                        ? 'bg-purple-600 text-white border-purple-600 shadow-sm'
+                                        : isLight
+                                        ? 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                                        : 'bg-slate-800 text-slate-300 border-slate-700'
+                                    }`}
+                                  >
+                                    <Check className={`w-3.5 h-3.5 ${isGSelected ? 'opacity-100' : 'opacity-0'}`} />
+                                    <span>{g}학년 학생</span>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+                      </div>
                     </div>
                   )}
                 </div>
@@ -818,7 +1197,15 @@ export const TeacherToStudentDispatch: React.FC<TeacherToStudentDispatchProps> =
                   className="w-full py-3.5 px-5 rounded-2xl font-black text-sm bg-purple-600 hover:bg-purple-700 text-white shadow-lg shadow-purple-600/30 flex items-center justify-center gap-2 transition-all cursor-pointer disabled:opacity-50"
                 >
                   <Megaphone className="w-4 h-4" />
-                  <span>{isSubmitting ? '공지 전달 중...' : '학생들에게 공지사항 전달하기'}</span>
+                  <span>
+                    {isSubmitting
+                      ? '공지 배포 중...'
+                      : schoolNoticeType === 'grade'
+                      ? `[${[...snTargetGrades].sort((a, b) => a - b).join('·')}학년 전체] 공지사항 배포하기`
+                      : schoolNoticeType === 'department'
+                      ? `[${snCustomDepartment || snDepartment} / ${snAudience === 'teachers' ? '교원 대상' : `${[...snDeptStudentGrades].sort((a, b) => a - b).join('·')}학년 학생 대상`}] 공지 배포하기`
+                      : '전교생 전체에게 공지사항 배포하기'}
+                  </span>
                 </button>
               </form>
             )}
@@ -937,12 +1324,21 @@ export const TeacherToStudentDispatch: React.FC<TeacherToStudentDispatchProps> =
                     }`}
                   >
                     <div className="flex items-start justify-between gap-2">
-                      <div>
-                        <div className="flex items-center gap-1.5 font-black">
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-1.5 font-black flex-wrap">
                           {notice.isUrgent && <span className="text-rose-500 font-black">🚨 [긴급]</span>}
                           <span>{notice.title}</span>
                         </div>
-                        <div className="text-[11px] text-slate-400 mt-0.5 flex items-center gap-2">
+                        <div className="text-[11px] text-slate-400 flex items-center gap-1.5 flex-wrap">
+                          <span className="px-1.5 py-0.5 rounded bg-purple-100 dark:bg-purple-950 text-purple-700 dark:text-purple-300 font-bold">
+                            {notice.type === 'grade'
+                              ? `${notice.targetGrades && notice.targetGrades.length > 0 ? notice.targetGrades.join('·') : notice.targetGrade}학년 전체`
+                              : notice.type === 'department'
+                              ? `${notice.targetDepartment || '부서'} (${notice.targetAudience === 'teachers' ? '교원' : notice.targetGrades && notice.targetGrades.length > 0 ? `${notice.targetGrades.join('·')}학년 학생` : '학생'})`
+                              : notice.type === 'homeroom_morning' || notice.type === 'homeroom_closing'
+                              ? `${notice.targetGrade}-${notice.targetClass}반`
+                              : '전교생'}
+                          </span>
                           <span>👤 {notice.senderRole}</span>
                           <span>•</span>
                           <span className="text-emerald-600 font-bold">
@@ -966,6 +1362,14 @@ export const TeacherToStudentDispatch: React.FC<TeacherToStudentDispatchProps> =
           </div>
         </div>
       </div>
+
+      {/* Virtual Student Interactive Simulator Modal */}
+      <VirtualStudentSimulatorModal
+        isOpen={isSimulatorOpen}
+        onClose={() => setIsSimulatorOpen(false)}
+        theme={theme}
+        currentTeacher={currentTeacherObj}
+      />
     </div>
   );
 };

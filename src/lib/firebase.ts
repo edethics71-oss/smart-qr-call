@@ -23,6 +23,7 @@ import type {
   StudentAttendance,
   TeacherWorkNote,
   WorkNoteResponse,
+  StudentRecord,
 } from '../types';
 
 // Read Firebase configurations from Vite environment variables (import.meta.env)
@@ -64,6 +65,60 @@ const STORAGE_TEACHER_CALLS_KEY = 'smart_qr_teacher_to_student_calls';
 const STORAGE_NOTICES_KEY = 'smart_qr_school_notices';
 const STORAGE_ATTENDANCE_KEY = 'smart_qr_attendance';
 const STORAGE_WORK_NOTES_KEY = 'smart_qr_work_notes';
+const STORAGE_STUDENTS_KEY = 'smart_qr_student_roster';
+
+const DEFAULT_STUDENTS: StudentRecord[] = [
+  // 1학년 1반
+  { id: 'std-1-1-1', grade: 1, classNum: 1, studentNumber: 1, name: '강민준', gender: 'M', status: 'active', notes: '반장' },
+  { id: 'std-1-1-2', grade: 1, classNum: 1, studentNumber: 2, name: '김도윤', gender: 'M', status: 'active' },
+  { id: 'std-1-1-3', grade: 1, classNum: 1, studentNumber: 3, name: '김서연', gender: 'F', status: 'active', notes: '부반장' },
+  { id: 'std-1-1-4', grade: 1, classNum: 1, studentNumber: 4, name: '김시우', gender: 'M', status: 'active' },
+  { id: 'std-1-1-5', grade: 1, classNum: 1, studentNumber: 5, name: '김지유', gender: 'F', status: 'active' },
+  { id: 'std-1-1-6', grade: 1, classNum: 1, studentNumber: 6, name: '김하은', gender: 'F', status: 'active' },
+  { id: 'std-1-1-7', grade: 1, classNum: 1, studentNumber: 7, name: '박건우', gender: 'M', status: 'active' },
+  { id: 'std-1-1-8', grade: 1, classNum: 1, studentNumber: 8, name: '박서아', gender: 'F', status: 'active' },
+  // 1학년 2반
+  { id: 'std-1-2-1', grade: 1, classNum: 2, studentNumber: 1, name: '박서준', gender: 'M', status: 'active', notes: '반장' },
+  { id: 'std-1-2-2', grade: 1, classNum: 2, studentNumber: 2, name: '박예준', gender: 'M', status: 'active' },
+  { id: 'std-1-2-3', grade: 1, classNum: 2, studentNumber: 3, name: '서유주', gender: 'F', status: 'active' },
+  { id: 'std-1-2-4', grade: 1, classNum: 2, studentNumber: 4, name: '송민재', gender: 'M', status: 'active' },
+  { id: 'std-1-2-5', grade: 1, classNum: 2, studentNumber: 5, name: '신지아', gender: 'F', status: 'active' },
+  // 1학년 3반 (25명 풀 명렬 샘플)
+  { id: 'std-1-3-0', grade: 1, classNum: 3, studentNumber: 1, name: '홍길동', gender: 'M', status: 'active', notes: '테스트 학생' },
+  { id: 'std-1-3-1', grade: 1, classNum: 3, studentNumber: 2, name: '안유진', gender: 'F', status: 'active', notes: '반장' },
+  { id: 'std-1-3-2', grade: 1, classNum: 3, studentNumber: 2, name: '유준상', gender: 'M', status: 'active' },
+  { id: 'std-1-3-3', grade: 1, classNum: 3, studentNumber: 3, name: '윤도현', gender: 'M', status: 'active' },
+  { id: 'std-1-3-4', grade: 1, classNum: 3, studentNumber: 4, name: '이도현', gender: 'M', status: 'active' },
+  { id: 'std-1-3-5', grade: 1, classNum: 3, studentNumber: 5, name: '이로아', gender: 'F', status: 'active' },
+  { id: 'std-1-3-6', grade: 1, classNum: 3, studentNumber: 6, name: '이시은', gender: 'F', status: 'active' },
+  { id: 'std-1-3-7', grade: 1, classNum: 3, studentNumber: 7, name: '이준우', gender: 'M', status: 'active' },
+  { id: 'std-1-3-8', grade: 1, classNum: 3, studentNumber: 8, name: '이하린', gender: 'F', status: 'active' },
+  { id: 'std-1-3-9', grade: 1, classNum: 3, studentNumber: 9, name: '이현우', gender: 'M', status: 'active' },
+  { id: 'std-1-3-10', grade: 1, classNum: 3, studentNumber: 10, name: '임수빈', gender: 'F', status: 'active' },
+  { id: 'std-1-3-11', grade: 1, classNum: 3, studentNumber: 11, name: '임예은', gender: 'F', status: 'active' },
+  { id: 'std-1-3-12', grade: 1, classNum: 3, studentNumber: 12, name: '임재윤', gender: 'M', status: 'active' },
+  { id: 'std-1-3-13', grade: 1, classNum: 3, studentNumber: 13, name: '장민서', gender: 'F', status: 'active' },
+  { id: 'std-1-3-14', grade: 1, classNum: 3, studentNumber: 14, name: '장원우', gender: 'M', status: 'active' },
+  { id: 'std-1-3-15', grade: 1, classNum: 3, studentNumber: 15, name: '김민준', gender: 'M', status: 'active', notes: '체육부장' },
+  { id: 'std-1-3-16', grade: 1, classNum: 3, studentNumber: 16, name: '정다은', gender: 'F', status: 'active' },
+  { id: 'std-1-3-17', grade: 1, classNum: 3, studentNumber: 17, name: '정수아', gender: 'F', status: 'active' },
+  { id: 'std-1-3-18', grade: 1, classNum: 3, studentNumber: 18, name: '정예원', gender: 'F', status: 'active' },
+  { id: 'std-1-3-19', grade: 1, classNum: 3, studentNumber: 19, name: '정우진', gender: 'M', status: 'active' },
+  { id: 'std-1-3-20', grade: 1, classNum: 3, studentNumber: 20, name: '조아인', gender: 'F', status: 'active' },
+  { id: 'std-1-3-21', grade: 1, classNum: 3, studentNumber: 21, name: '조은우', gender: 'M', status: 'active' },
+  { id: 'std-1-3-22', grade: 1, classNum: 3, studentNumber: 22, name: '조재윤', gender: 'M', status: 'active' },
+  { id: 'std-1-3-23', grade: 1, classNum: 3, studentNumber: 23, name: '차은우', gender: 'M', status: 'active' },
+  { id: 'std-1-3-24', grade: 1, classNum: 3, studentNumber: 24, name: '최다온', gender: 'M', status: 'active' },
+  { id: 'std-1-3-25', grade: 1, classNum: 3, studentNumber: 25, name: '최서현', gender: 'F', status: 'active' },
+  // 2학년 1반
+  { id: 'std-2-1-1', grade: 2, classNum: 1, studentNumber: 1, name: '권지용', gender: 'M', status: 'active', notes: '반장' },
+  { id: 'std-2-1-2', grade: 2, classNum: 1, studentNumber: 2, name: '김태형', gender: 'M', status: 'active' },
+  { id: 'std-2-1-3', grade: 2, classNum: 1, studentNumber: 3, name: '박지민', gender: 'M', status: 'active' },
+  { id: 'std-2-1-4', grade: 2, classNum: 1, studentNumber: 4, name: '배수지', gender: 'F', status: 'active' },
+  // 3학년 1반
+  { id: 'std-3-1-1', grade: 3, classNum: 1, studentNumber: 1, name: '아이유', gender: 'F', status: 'active', notes: '학생회장' },
+  { id: 'std-3-1-2', grade: 3, classNum: 1, studentNumber: 2, name: '이승기', gender: 'M', status: 'active', notes: '부회장' },
+];
 
 const channel = typeof window !== 'undefined' ? new BroadcastChannel('smart_qr_sync_channel') : null;
 
@@ -74,7 +129,14 @@ const DEFAULT_TEACHERS: Teacher[] = [
     name: '김민준',
     room: '본관 1교무실',
     subject: '수학',
-    tags: ['1학년 담임', '수학과', '부장교사', '기획위원회', '교육과정위원회'],
+    department: '1학년부',
+    grade: 1,
+    classNum: 3,
+    homeroomRole: '1학년 3반 담임',
+    duty: '1학년 학년운영 및 수학 수업',
+    committees: ['교육과정위원회', '기획위원회'],
+    extension: '101',
+    tags: ['1학년 담임', '수학과', '1학년부', '기획위원회', '교육과정위원회'],
     createdAt: Date.now() - 3600000,
   },
   {
@@ -82,7 +144,12 @@ const DEFAULT_TEACHERS: Teacher[] = [
     name: '이서연',
     room: '본관 1교무실',
     subject: '국어',
-    tags: ['1학년 담임', '국어과', '교무기획부', '인사자문위원회'],
+    department: '교무기획부',
+    homeroomRole: '교무기획부장 (비담임)',
+    duty: '교무기획 총괄 및 학사일정',
+    committees: ['기획위원회', '인사자문위원회', '교육과정위원회'],
+    extension: '102',
+    tags: ['교무기획부', '국어과', '부장교사', '기획위원회', '인사자문위원회'],
     createdAt: Date.now() - 3500000,
   },
   {
@@ -90,7 +157,14 @@ const DEFAULT_TEACHERS: Teacher[] = [
     name: '박지훈',
     room: '본관 1교무실',
     subject: '영어',
-    tags: ['1학년 담임', '영어과', '학폭전담기구'],
+    department: '1학년부',
+    grade: 1,
+    classNum: 1,
+    homeroomRole: '1학년 1반 담임',
+    duty: '1학년 영어 수업 및 나이스 학적',
+    committees: ['학폭전담기구', '선도위원회'],
+    extension: '103',
+    tags: ['1학년 담임', '영어과', '1학년부', '학폭전담기구'],
     createdAt: Date.now() - 3400000,
   },
   {
@@ -98,16 +172,56 @@ const DEFAULT_TEACHERS: Teacher[] = [
     name: '최유나',
     room: '2학년 연구실',
     subject: '과학',
+    department: '2학년부',
+    grade: 2,
+    classNum: 1,
+    homeroomRole: '2학년 부장 / 2-1 담임',
+    duty: '2학년 총괄 및 과학 실험실 관리',
+    committees: ['기획위원회', '교권보호위원회', '교육과정위원회'],
+    extension: '201',
     tags: ['2학년 담임', '2학년 부장', '과학과', '기획위원회', '교권보호위원회'],
     createdAt: Date.now() - 3300000,
   },
   {
     id: 'teacher-5',
     name: '정현우',
+    room: '2학년 연구실',
+    subject: '사회',
+    department: '학생안전부',
+    homeroomRole: '학생안전부장 (비담임)',
+    duty: '학생 생활지도 및 학교폭력 예방',
+    committees: ['학폭전담기구', '선도위원회', '교권보호위원회'],
+    extension: '202',
+    tags: ['학생안전부', '사회과', '부장교사', '학폭전담기구', '선도위원회'],
+    createdAt: Date.now() - 3200000,
+  },
+  {
+    id: 'teacher-6',
+    name: '강도윤',
+    room: '3학년 연구실',
+    subject: '한국사',
+    department: '3학년부',
+    grade: 3,
+    classNum: 1,
+    homeroomRole: '3학년 부장 / 3-1 담임',
+    duty: '3학년 입시지도 및 학년 운영',
+    committees: ['기획위원회', '인사자문위원회'],
+    extension: '301',
+    tags: ['3학년 담임', '3학년 부장', '역사/사회과', '기획위원회'],
+    createdAt: Date.now() - 3100000,
+  },
+  {
+    id: 'teacher-7',
+    name: '임서진',
     room: '진로진학상담실',
     subject: '진로상담',
-    tags: ['진로진학부', '상담교사', '교육과정위원회'],
-    createdAt: Date.now() - 3200000,
+    department: '진로진학상담부',
+    homeroomRole: '진로진학상담부장',
+    duty: '학생 진로 및 Wee클래스 전문상담',
+    committees: ['학폭전담기구', '교육과정위원회', '인사자문위원회'],
+    extension: '401',
+    tags: ['진로진학부', '상담교사', '교육과정위원회', '학폭전담기구'],
+    createdAt: Date.now() - 3000000,
   },
 ];
 
@@ -317,6 +431,7 @@ export const dbService = {
           await addDoc(teachersRef, {
             ...t,
             tags: t.tags || [],
+            committees: t.committees || [],
             createdAt: Date.now(),
           });
         }
@@ -330,11 +445,67 @@ export const dbService = {
     const formatted: Teacher[] = newTeachersList.map((t, idx) => ({
       ...t,
       tags: t.tags || [],
+      committees: t.committees || [],
       id: 'teacher-' + Date.now() + '-' + idx,
       createdAt: Date.now(),
     }));
     saveLocal(STORAGE_TEACHERS_KEY, [...current, ...formatted], 'TEACHERS_UPDATED');
     return formatted.length;
+  },
+
+  async replaceTeachersBatch(newTeachersList: Omit<Teacher, 'id'>[]): Promise<number> {
+    if (firestore) {
+      try {
+        const teachersRef = collection(firestore, 'teachers');
+        const snapshot = await getDocs(teachersRef);
+        for (const docSnap of snapshot.docs) {
+          await deleteDoc(docSnap.ref);
+        }
+        for (const t of newTeachersList) {
+          await addDoc(teachersRef, {
+            ...t,
+            tags: t.tags || [],
+            committees: t.committees || [],
+            createdAt: Date.now(),
+          });
+        }
+        return newTeachersList.length;
+      } catch (error) {
+        console.error('Error replacing teachers batch in Firestore:', error);
+      }
+    }
+
+    const formatted: Teacher[] = newTeachersList.map((t, idx) => ({
+      ...t,
+      tags: t.tags || [],
+      committees: t.committees || [],
+      id: 'teacher-' + Date.now() + '-' + idx,
+      createdAt: Date.now(),
+    }));
+    saveLocal(STORAGE_TEACHERS_KEY, formatted, 'TEACHERS_UPDATED');
+    return formatted.length;
+  },
+
+  async resetTeachersToDefault(): Promise<void> {
+    if (firestore) {
+      try {
+        const teachersRef = collection(firestore, 'teachers');
+        const snapshot = await getDocs(teachersRef);
+        for (const docSnap of snapshot.docs) {
+          await deleteDoc(docSnap.ref);
+        }
+        for (const t of DEFAULT_TEACHERS) {
+          await addDoc(teachersRef, {
+            ...t,
+            createdAt: Date.now(),
+          });
+        }
+        return;
+      } catch (error) {
+        console.error('Error resetting teachers to default in Firestore:', error);
+      }
+    }
+    saveLocal(STORAGE_TEACHERS_KEY, DEFAULT_TEACHERS, 'TEACHERS_UPDATED');
   },
 
   async updateTeacher(id: string, updates: Partial<Teacher>): Promise<void> {
@@ -748,8 +919,32 @@ export const dbService = {
   subscribeSchoolNotices(
     callback: (notices: SchoolNotice[]) => void,
     gradeFilter?: number,
-    classFilter?: number
+    classFilter?: number,
+    isStudentViewer: boolean = false
   ): Unsubscribe {
+    const isNoticeMatching = (n: SchoolNotice) => {
+      // If student is viewing, filter out notices directed strictly to teachers only
+      if (isStudentViewer && n.targetAudience === 'teachers') {
+        return false;
+      }
+
+      if (gradeFilter) {
+        // If notice has targetGrades array specified
+        if (n.targetGrades && n.targetGrades.length > 0) {
+          if (!n.targetGrades.includes(gradeFilter)) {
+            return false;
+          }
+        } else if (n.targetGrade !== 0 && n.targetGrade !== gradeFilter) {
+          return false;
+        }
+      }
+
+      if (classFilter && n.targetClass !== 0 && n.targetClass !== classFilter) {
+        return false;
+      }
+      return true;
+    };
+
     if (firestore) {
       try {
         const noticesRef = collection(firestore, 'school_notices');
@@ -760,23 +955,13 @@ export const dbService = {
           (snapshot) => {
             const list: SchoolNotice[] = snapshot.docs
               .map((d) => ({ id: d.id, ...(d.data() as Omit<SchoolNotice, 'id'>) }))
-              .filter((n) => {
-                if (gradeFilter && n.targetGrade !== 0 && n.targetGrade !== gradeFilter) return false;
-                if (classFilter && n.targetClass !== 0 && n.targetClass !== classFilter) return false;
-                return true;
-              });
+              .filter(isNoticeMatching);
             callback(list);
           },
           (err) => {
             console.error('Firestore notices error:', err);
             const all = getLocal<SchoolNotice[]>(STORAGE_NOTICES_KEY, DEFAULT_NOTICES);
-            callback(
-              all.filter((n) => {
-                if (gradeFilter && n.targetGrade !== 0 && n.targetGrade !== gradeFilter) return false;
-                if (classFilter && n.targetClass !== 0 && n.targetClass !== classFilter) return false;
-                return true;
-              })
-            );
+            callback(all.filter(isNoticeMatching));
           }
         );
       } catch (err) {
@@ -786,13 +971,7 @@ export const dbService = {
 
     const emit = () => {
       const all = getLocal<SchoolNotice[]>(STORAGE_NOTICES_KEY, DEFAULT_NOTICES);
-      callback(
-        all.filter((n) => {
-          if (gradeFilter && n.targetGrade !== 0 && n.targetGrade !== gradeFilter) return false;
-          if (classFilter && n.targetClass !== 0 && n.targetClass !== classFilter) return false;
-          return true;
-        })
-      );
+      callback(all.filter(isNoticeMatching));
     };
     emit();
 
@@ -1106,5 +1285,184 @@ export const dbService = {
       current.filter((n) => n.id !== noteId),
       'WORK_NOTES_UPDATED'
     );
+  },
+
+  // ==========================================
+  // 7. STUDENT ROSTER (학생 학적 명렬)
+  // ==========================================
+  subscribeStudents(
+    callback: (students: StudentRecord[]) => void,
+    gradeFilter?: number,
+    classFilter?: number
+  ): Unsubscribe {
+    if (firestore) {
+      try {
+        const studentsRef = collection(firestore, 'students_roster');
+        let q = query(studentsRef, orderBy('studentNumber', 'asc'));
+
+        if (gradeFilter && gradeFilter > 0) {
+          q = query(q, where('grade', '==', gradeFilter));
+        }
+        if (classFilter && classFilter > 0) {
+          q = query(q, where('classNum', '==', classFilter));
+        }
+
+        return onSnapshot(
+          q,
+          (snapshot) => {
+            const list: StudentRecord[] = snapshot.docs.map((d) => ({
+              id: d.id,
+              ...(d.data() as Omit<StudentRecord, 'id'>),
+            }));
+            // Sort by grade, class, number
+            list.sort((a, b) => {
+              if (a.grade !== b.grade) return a.grade - b.grade;
+              if (a.classNum !== b.classNum) return a.classNum - b.classNum;
+              return a.studentNumber - b.studentNumber;
+            });
+            callback(list);
+          },
+          (err) => {
+            console.error('Firestore students subscription error:', err);
+            this.fallbackStudentsCallback(callback, gradeFilter, classFilter);
+          }
+        );
+      } catch (err) {
+        console.error('Error querying students:', err);
+      }
+    }
+
+    return this.fallbackStudentsCallback(callback, gradeFilter, classFilter);
+  },
+
+  fallbackStudentsCallback(
+    callback: (students: StudentRecord[]) => void,
+    gradeFilter?: number,
+    classFilter?: number
+  ): Unsubscribe {
+    const emit = () => {
+      let current = getLocal<StudentRecord[]>(STORAGE_STUDENTS_KEY, DEFAULT_STUDENTS);
+      if (gradeFilter && gradeFilter > 0) {
+        current = current.filter((s) => s.grade === gradeFilter);
+      }
+      if (classFilter && classFilter > 0) {
+        current = current.filter((s) => s.classNum === classFilter);
+      }
+      current.sort((a, b) => {
+        if (a.grade !== b.grade) return a.grade - b.grade;
+        if (a.classNum !== b.classNum) return a.classNum - b.classNum;
+        return a.studentNumber - b.studentNumber;
+      });
+      callback(current);
+    };
+
+    emit();
+
+    const handleMessage = (e: MessageEvent) => {
+      if (e.data?.type === 'STUDENTS_UPDATED') emit();
+    };
+    channel?.addEventListener('message', handleMessage);
+
+    return () => {
+      channel?.removeEventListener('message', handleMessage);
+    };
+  },
+
+  async addStudent(student: Omit<StudentRecord, 'id' | 'createdAt'>): Promise<string> {
+    const payload = {
+      ...student,
+      createdAt: Date.now(),
+    };
+
+    if (firestore) {
+      try {
+        const ref = collection(firestore, 'students_roster');
+        const docRef = await addDoc(ref, payload);
+        return docRef.id;
+      } catch (err) {
+        console.error('Error adding student:', err);
+      }
+    }
+
+    const current = getLocal<StudentRecord[]>(STORAGE_STUDENTS_KEY, DEFAULT_STUDENTS);
+    const newId = 'std-' + Date.now() + '-' + Math.floor(Math.random() * 1000);
+    const newStudent: StudentRecord = { ...payload, id: newId };
+    saveLocal(STORAGE_STUDENTS_KEY, [...current, newStudent], 'STUDENTS_UPDATED');
+    return newId;
+  },
+
+  async updateStudent(studentId: string, updates: Partial<StudentRecord>): Promise<void> {
+    if (firestore) {
+      try {
+        const studentDoc = doc(firestore, 'students_roster', studentId);
+        await updateDoc(studentDoc, updates);
+        return;
+      } catch (err) {
+        console.error('Error updating student in Firestore:', err);
+      }
+    }
+
+    const current = getLocal<StudentRecord[]>(STORAGE_STUDENTS_KEY, DEFAULT_STUDENTS);
+    saveLocal(
+      STORAGE_STUDENTS_KEY,
+      current.map((s) => (s.id === studentId ? { ...s, ...updates } : s)),
+      'STUDENTS_UPDATED'
+    );
+  },
+
+  async deleteStudent(studentId: string): Promise<void> {
+    if (firestore) {
+      try {
+        const studentDoc = doc(firestore, 'students_roster', studentId);
+        await deleteDoc(studentDoc);
+        return;
+      } catch (err) {
+        console.error('Error deleting student:', err);
+      }
+    }
+
+    const current = getLocal<StudentRecord[]>(STORAGE_STUDENTS_KEY, DEFAULT_STUDENTS);
+    saveLocal(
+      STORAGE_STUDENTS_KEY,
+      current.filter((s) => s.id !== studentId),
+      'STUDENTS_UPDATED'
+    );
+  },
+
+  async bulkImportStudents(students: Omit<StudentRecord, 'id' | 'createdAt'>[]): Promise<number> {
+    if (firestore) {
+      try {
+        const ref = collection(firestore, 'students_roster');
+        for (const s of students) {
+          await addDoc(ref, { ...s, createdAt: Date.now() });
+        }
+        return students.length;
+      } catch (err) {
+        console.error('Error bulk importing students to Firestore:', err);
+      }
+    }
+
+    const current = getLocal<StudentRecord[]>(STORAGE_STUDENTS_KEY, DEFAULT_STUDENTS);
+    const newStudents: StudentRecord[] = students.map((s, idx) => ({
+      ...s,
+      id: `std-bulk-${Date.now()}-${idx}`,
+      createdAt: Date.now(),
+    }));
+
+    saveLocal(STORAGE_STUDENTS_KEY, [...current, ...newStudents], 'STUDENTS_UPDATED');
+    return newStudents.length;
+  },
+
+  async clearClassStudents(grade: number, classNum: number): Promise<void> {
+    const current = getLocal<StudentRecord[]>(STORAGE_STUDENTS_KEY, DEFAULT_STUDENTS);
+    saveLocal(
+      STORAGE_STUDENTS_KEY,
+      current.filter((s) => !(s.grade === grade && s.classNum === classNum)),
+      'STUDENTS_UPDATED'
+    );
+  },
+
+  async resetDefaultStudents(): Promise<void> {
+    saveLocal(STORAGE_STUDENTS_KEY, DEFAULT_STUDENTS, 'STUDENTS_UPDATED');
   },
 };

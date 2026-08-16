@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { QRCodeSVG } from 'qrcode.react';
 import {
   Bell,
   CheckCircle2,
@@ -28,9 +29,13 @@ import {
   Users,
   Coffee,
   Radio,
-  Send
+  Send,
+  QrCode,
+  Copy,
+  ExternalLink
 } from 'lucide-react';
 import { dbService } from '../lib/firebase';
+import { getPublicStudentUrl } from '../lib/urlUtils';
 import { playAlertChime } from '../utils/audio';
 import { VisitMemosModal } from './VisitMemosModal';
 import type { Teacher, Call, ThemeType } from '../types';
@@ -90,6 +95,19 @@ export const TeacherReceiverView: React.FC<TeacherReceiverViewProps> = ({
     });
     return Array.from(roomSet);
   }, [teachers]);
+
+  // Room QR Modal state (교무실 문 부착용 QR 안내판 생성/인쇄)
+  const [isRoomQrModalOpen, setIsRoomQrModalOpen] = useState<boolean>(false);
+  const [qrModalRoom, setQrModalRoom] = useState<string>('본관 1교무실');
+  const [customQrRoom, setCustomQrRoom] = useState<string>('');
+  const [copiedLink, setCopiedLink] = useState<boolean>(false);
+
+  // Set default qr room when rooms list loads
+  useEffect(() => {
+    if (rooms.length > 0 && (!qrModalRoom || qrModalRoom === '본관 1교무실')) {
+      setQrModalRoom(rooms[0]);
+    }
+  }, [rooms]);
 
   // Teachers filtered by selected room
   const availableTeachers = useMemo(() => {
@@ -331,8 +349,24 @@ export const TeacherReceiverView: React.FC<TeacherReceiverViewProps> = ({
             </div>
           </div>
 
-          {/* Right Action Buttons: Presence Selector + Visit Memo Check Button */}
+          {/* Right Action Buttons: Presence Selector + Visit Memo Check Button + Door QR Placard */}
           <div className="flex flex-wrap items-center gap-2">
+            {/* Prominent Door QR Placard Button as requested */}
+            <button
+              id="btn-open-door-qr-modal"
+              onClick={() => {
+                if (selectedRoom !== 'ALL') {
+                  setQrModalRoom(selectedRoom);
+                }
+                setIsRoomQrModalOpen(true);
+              }}
+              className="px-4 py-2 rounded-2xl font-black text-xs sm:text-sm bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white shadow-md shadow-emerald-600/20 flex items-center gap-2 transition cursor-pointer"
+              title="교무실 출입문에 부착할 QR 코드 안내판 생성 및 A4 인쇄"
+            >
+              <QrCode className="w-4 h-4" />
+              <span>🚪 교무실 문 부착용 QR 생성·인쇄</span>
+            </button>
+
             {/* Prominent Visit Memo Button with Counter as requested */}
             <button
               id="btn-open-visit-memos"
@@ -487,15 +521,20 @@ export const TeacherReceiverView: React.FC<TeacherReceiverViewProps> = ({
             </select>
           </div>
 
-          {selectedRoom !== 'ALL' && (
-            <button
-              onClick={() => onOpenPlacard(selectedRoom)}
-              className="px-3 py-1.5 rounded-xl text-xs font-bold bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200 transition flex items-center gap-1 cursor-pointer"
-            >
-              <Printer className="w-3.5 h-3.5" />
-              <span>[{selectedRoom}] 문앞 부착판 인쇄</span>
-            </button>
-          )}
+          {/* QR Door Placard Print Button (Always Available) */}
+          <button
+            onClick={() => {
+              if (selectedRoom !== 'ALL') {
+                onOpenPlacard(selectedRoom);
+              } else {
+                setIsRoomQrModalOpen(true);
+              }
+            }}
+            className="px-3 py-1.5 rounded-xl text-xs font-bold bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200 transition flex items-center gap-1.5 cursor-pointer shadow-sm"
+          >
+            <Printer className="w-3.5 h-3.5 text-indigo-600" />
+            <span>{selectedRoom !== 'ALL' ? `[${selectedRoom}] 문앞 부착판 인쇄` : '출입문 QR 부착판 인쇄'}</span>
+          </button>
         </div>
 
         {/* Search */}
@@ -793,6 +832,149 @@ export const TeacherReceiverView: React.FC<TeacherReceiverViewProps> = ({
                 저장 완료
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* 🚪 교무실 출입문 부착용 QR 코드 생성 및 인쇄 모달 */}
+      {isRoomQrModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+          <div
+            className={`w-full max-w-lg rounded-3xl p-6 shadow-2xl border transition space-y-5 max-h-[90vh] overflow-y-auto ${
+              isLight ? 'bg-white border-indigo-100 text-slate-900' : 'bg-slate-900 border-slate-700 text-white'
+            }`}
+          >
+            {/* Modal Header */}
+            <div className="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-800">
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-indigo-600 to-purple-600 text-white flex items-center justify-center shadow-md">
+                  <QrCode className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-black text-base">교무실 문 부착용 QR 안내판 생성</h3>
+                  <p className="text-xs text-slate-500">학생이 스마트폰 카메라로 스캔하여 선생님을 호출하는 QR 코드</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setIsRoomQrModalOpen(false)}
+                className="p-2 rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Room Selector */}
+            <div className="space-y-2">
+              <label className="block text-xs font-bold text-slate-600 dark:text-slate-400">
+                출입문 부착 대상 교무실 선택:
+              </label>
+              <div className="grid grid-cols-2 gap-2">
+                {rooms.map((r) => (
+                  <button
+                    key={r}
+                    type="button"
+                    onClick={() => {
+                      setQrModalRoom(r);
+                      setCustomQrRoom('');
+                    }}
+                    className={`px-3 py-2 rounded-xl border text-xs font-bold transition text-left truncate flex items-center justify-between cursor-pointer ${
+                      qrModalRoom === r && !customQrRoom
+                        ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
+                        : isLight
+                        ? 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-indigo-50'
+                        : 'bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700'
+                    }`}
+                  >
+                    <span className="truncate">📍 {r}</span>
+                    <span className="text-[11px] opacity-75 whitespace-nowrap ml-1">
+                      {teachers.filter((t) => t.room === r).length}명
+                    </span>
+                  </button>
+                ))}
+              </div>
+
+              {/* Custom Room Input */}
+              <div className="flex items-center gap-2 pt-1">
+                <span className="text-xs text-slate-500 font-bold whitespace-nowrap">직접 입력:</span>
+                <input
+                  type="text"
+                  value={customQrRoom}
+                  onChange={(e) => {
+                    setCustomQrRoom(e.target.value);
+                    if (e.target.value) setQrModalRoom(e.target.value);
+                  }}
+                  placeholder="예: 3학년 교무실, 체육관 교무실, 음악실 등"
+                  className={`w-full px-3 py-1.5 rounded-xl border text-xs font-bold outline-none ${
+                    isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-800 border-slate-700 text-white'
+                  }`}
+                />
+              </div>
+            </div>
+
+            {/* Active Room QR Display */}
+            {(() => {
+              const activeRoom = customQrRoom.trim() || qrModalRoom || '본관 1교무실';
+              const studentUrl = getPublicStudentUrl(activeRoom);
+              const roomTeachers = teachers.filter((t) => t.room === activeRoom);
+
+              return (
+                <div className="p-4 rounded-2xl bg-indigo-50/70 dark:bg-slate-950 border border-indigo-100 dark:border-slate-800 space-y-4">
+                  <div className="text-center space-y-1">
+                    <span className="px-3 py-0.5 rounded-full bg-indigo-600 text-white text-xs font-black">
+                      {activeRoom}
+                    </span>
+                    <p className="text-xs text-slate-500 dark:text-slate-400">
+                      상주 선생님: {roomTeachers.length > 0 ? roomTeachers.map((t) => t.name).join(', ') : '등록된 교사 없음'}
+                    </p>
+                  </div>
+
+                  {/* QR Code Graphic */}
+                  <div className="flex justify-center p-3 bg-white rounded-2xl border border-slate-200 shadow-inner w-fit mx-auto">
+                    <QRCodeSVG value={studentUrl} size={180} level="H" includeMargin />
+                  </div>
+
+                  {/* URL Text & Copy */}
+                  <div className="p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-[11px] text-slate-600 dark:text-slate-300 font-mono break-all flex items-center justify-between gap-2">
+                    <span className="truncate">{studentUrl}</span>
+                    <button
+                      onClick={() => {
+                        navigator.clipboard.writeText(studentUrl);
+                        setCopiedLink(true);
+                        setTimeout(() => setCopiedLink(false), 2000);
+                      }}
+                      className="px-2.5 py-1 rounded-lg bg-indigo-50 text-indigo-700 hover:bg-indigo-100 font-bold whitespace-nowrap transition cursor-pointer flex items-center gap-1"
+                    >
+                      {copiedLink ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                      <span>{copiedLink ? '복사됨' : '복사'}</span>
+                    </button>
+                  </div>
+
+                  {/* Actions */}
+                  <div className="space-y-2 pt-1">
+                    <button
+                      onClick={() => {
+                        setIsRoomQrModalOpen(false);
+                        onOpenPlacard(activeRoom);
+                      }}
+                      className="w-full py-3 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white font-black text-xs sm:text-sm shadow-md shadow-indigo-600/20 flex items-center justify-center gap-2 transition cursor-pointer"
+                    >
+                      <Printer className="w-4 h-4" />
+                      <span>[{activeRoom}] A4 출입문 부착 안내판 인쇄하기</span>
+                    </button>
+
+                    <button
+                      onClick={() => {
+                        window.open(studentUrl, '_blank');
+                      }}
+                      className="w-full py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 text-xs font-bold flex items-center justify-center gap-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
+                    >
+                      <ExternalLink className="w-3.5 h-3.5" />
+                      <span>학생 호출 화면 새 창으로 테스트 열기</span>
+                    </button>
+                  </div>
+                </div>
+              );
+            })()}
           </div>
         </div>
       )}

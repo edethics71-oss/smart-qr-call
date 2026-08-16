@@ -66,8 +66,10 @@ export const TeacherWorkNotesView: React.FC<TeacherWorkNotesViewProps> = ({ them
       '부장교사',
       '기획위원회',
       '교육과정위원회',
-      '학폭전담기구',
       '인사자문위원회',
+      '교권보호위원회',
+      '학폭전담기구',
+      '선도위원회',
       '수학과',
       '국어과',
       '영어과',
@@ -75,6 +77,9 @@ export const TeacherWorkNotesView: React.FC<TeacherWorkNotesViewProps> = ({ them
       '사회과',
     ]);
     teachers.forEach((t) => {
+      if (t.department) set.add(t.department);
+      if (t.subject) set.add(t.subject.endsWith('과') ? t.subject : `${t.subject}과`);
+      t.committees?.forEach((c) => set.add(c));
       t.tags?.forEach((tag) => set.add(tag));
     });
     return Array.from(set);

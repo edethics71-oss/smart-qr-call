@@ -22,6 +22,8 @@ interface NavbarProps {
   theme: ThemeType;
   onToggleTheme: () => void;
   onOpenFirebaseGuide: () => void;
+  onOpenQuickQr?: () => void;
+  onOpenSimulator?: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -30,6 +32,8 @@ export const Navbar: React.FC<NavbarProps> = ({
   theme,
   onToggleTheme,
   onOpenFirebaseGuide,
+  onOpenQuickQr,
+  onOpenSimulator,
 }) => {
   const isStudent = currentPath.startsWith('/student');
   const isLight = theme === 'vibrant-palette';
@@ -62,7 +66,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               className="cursor-pointer font-black text-lg tracking-tight flex items-center gap-2"
             >
               <span className={isLight ? 'text-slate-900' : 'text-white'}>
-                스마트 QR 방문 접수처
+                담임 업무 지원
               </span>
               <span
                 className={`text-[11px] font-extrabold px-2.5 py-0.5 rounded-full ${
@@ -79,43 +83,13 @@ export const Navbar: React.FC<NavbarProps> = ({
                 isLight ? 'text-slate-500' : 'text-slate-400'
               }`}
             >
-              교무실 QR 호출 & 자동 부재중 방문 메모 시스템
+              학생 호출 · 전달사항 · 출결 관리 · 업무 쪽지 지원 포털
             </p>
           </div>
         </div>
 
         {/* Navigation Tabs & Actions */}
         <div className="flex items-center space-x-1.5 sm:space-x-2.5">
-          <button
-            id="nav-teacher-btn"
-            onClick={() => onNavigate('/teacher')}
-            className={`px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
-              !isStudent
-                ? 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-md shadow-indigo-200'
-                : isLight
-                ? 'text-slate-600 hover:bg-indigo-50/80 hover:text-indigo-700'
-                : 'text-slate-300 hover:bg-slate-800 hover:text-white'
-            }`}
-          >
-            <Bell className="w-4 h-4" />
-            <span>교직원 화면</span>
-          </button>
-
-          <button
-            id="nav-student-btn"
-            onClick={() => onNavigate('/student')}
-            className={`px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
-              isStudent
-                ? 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-md shadow-indigo-200'
-                : isLight
-                ? 'text-slate-600 hover:bg-indigo-50/80 hover:text-indigo-700'
-                : 'text-slate-300 hover:bg-slate-800 hover:text-white'
-            }`}
-          >
-            <Smartphone className="w-4 h-4" />
-            <span>학생 호출 체험</span>
-          </button>
-
           {/* Quick Sound Test */}
           <button
             id="nav-audio-test-btn"

@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import { Printer, X, Download, School, Sparkles, Smartphone, Bell, CheckCircle } from 'lucide-react';
+import { getPublicStudentUrl } from '../lib/urlUtils';
 
 interface PrintablePlacardModalProps {
   room: string;
@@ -11,8 +12,7 @@ export const PrintablePlacardModal: React.FC<PrintablePlacardModalProps> = ({
   room,
   onClose,
 }) => {
-  const origin = typeof window !== 'undefined' ? window.location.origin : 'https://school.app';
-  const studentUrl = `${origin}/student?room=${encodeURIComponent(room)}`;
+  const studentUrl = useMemo(() => getPublicStudentUrl(room), [room]);
 
   const handlePrint = () => {
     window.print();

@@ -15,16 +15,21 @@ import {
   Sparkles,
   UserCheck,
   Building2,
-  Users
+  Users,
+  UserPlus
 } from 'lucide-react';
 import { dbService } from '../lib/firebase';
-import type { StudentAttendance, ThemeType } from '../types';
+import type { StudentAttendance, StudentRecord, ThemeType } from '../types';
 
 interface AttendanceManagementViewProps {
   theme: ThemeType;
+  onNavigateToRoster?: () => void;
 }
 
-export const AttendanceManagementView: React.FC<AttendanceManagementViewProps> = ({ theme }) => {
+export const AttendanceManagementView: React.FC<AttendanceManagementViewProps> = ({
+  theme,
+  onNavigateToRoster,
+}) => {
   const isLight = theme === 'vibrant-palette';
 
   const todayStr = new Date().toISOString().slice(0, 10);
@@ -34,24 +39,20 @@ export const AttendanceManagementView: React.FC<AttendanceManagementViewProps> =
   const [searchName, setSearchName] = useState<string>('');
 
   const [records, setRecords] = useState<StudentAttendance[]>([]);
+  const [rosterStudents, setRosterStudents] = useState<StudentRecord[]>([]);
   const [toastMsg, setToastMsg] = useState('');
 
-  // Sample student list for the selected class (standard 28 students per class)
-  const defaultClassStudents = useMemo(() => {
-    return Array.from({ length: 28 }, (_, i) => {
-      const num = i + 1;
-      const names = [
-        '강민서', '김민준', '김서준', '김도윤', '김예준', '김시우', '김하준', '김주원',
-        '김지호', '김지후', '김준우', '김건우', '김도현', '김현우', '김철수', '박지민',
-        '박서진', '박예찬', '박준서', '박지후', '이서연', '이영희', '이지우', '이하은',
-        '이지민', '이서현', '임재원', '최유나'
-      ];
-      return {
-        number: num,
-        name: names[i] || `학생${num}`,
-      };
-    });
-  }, []);
+  // Subscribe to registered student roster
+  useEffect(() => {
+    const unsubRoster = dbService.subscribeStudents(
+      (list) => {
+        setRosterStudents(list);
+      },
+      selectedGrade,
+      selectedClass
+    );
+    return () => unsubRoster();
+  }, [selectedGrade, selectedClass]);
 
   // Subscribe to attendance records
   useEffect(() => {
@@ -71,21 +72,33 @@ export const AttendanceManagementView: React.FC<AttendanceManagementViewProps> =
     setTimeout(() => setToastMsg(''), 3000);
   };
 
-  // Combine default roster with recorded attendance
+  // Combine registered roster with recorded attendance
   const studentRows = useMemo(() => {
-    return defaultClassStudents.map((std) => {
-      const key = `${selectedGrade}-${selectedClass}-${std.number}-${std.name}`;
+    // If registered students exist for this class, use them; otherwise fallback to 25 placeholder seats
+    let baseList = rosterStudents;
+    if (baseList.length === 0) {
+      baseList = Array.from({ length: 25 }, (_, i) => ({
+        id: `temp-${i + 1}`,
+        grade: selectedGrade,
+        classNum: selectedClass,
+        studentNumber: i + 1,
+        name: `학생${i + 1}`,
+      }));
+    }
+
+    return baseList.map((std) => {
+      const key = `${selectedGrade}-${selectedClass}-${std.studentNumber}-${std.name}`;
       const rec = records.find(
         (r) =>
           r.grade === selectedGrade &&
           r.classNum === selectedClass &&
-          (r.studentNumber === std.number || r.studentName === std.name)
+          (r.studentNumber === std.studentNumber || r.studentName === std.name)
       );
 
       return {
         grade: selectedGrade,
         classNum: selectedClass,
-        number: std.number,
+        number: std.studentNumber,
         name: std.name,
         studentKey: key,
         recordId: rec?.id,
@@ -93,9 +106,10 @@ export const AttendanceManagementView: React.FC<AttendanceManagementViewProps> =
         checkInTime: rec?.checkInTime,
         method: rec?.method,
         note: rec?.note,
+        isRegistered: !std.id.startsWith('temp-'),
       };
     });
-  }, [defaultClassStudents, records, selectedGrade, selectedClass]);
+  }, [rosterStudents, records, selectedGrade, selectedClass]);
 
   // Filter by search
   const filteredStudents = useMemo(() => {
@@ -235,7 +249,20 @@ export const AttendanceManagementView: React.FC<AttendanceManagementViewProps> =
         </div>
 
         {/* Action buttons */}
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {onNavigateToRoster && (
+            <button
+              onClick={onNavigateToRoster}
+              className={`px-3.5 py-2 rounded-xl text-xs font-black border transition flex items-center gap-1.5 cursor-pointer ${
+                isLight
+                  ? 'bg-indigo-50 text-indigo-700 border-indigo-200 hover:bg-indigo-100'
+                  : 'bg-slate-800 text-slate-200 border-slate-700 hover:bg-slate-700'
+              }`}
+            >
+              <Users className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+              <span>학생 명렬 등록·관리</span>
+            </button>
+          )}
           <button
             onClick={handleMarkAllPresent}
             className="px-3.5 py-2 rounded-xl text-xs font-black bg-emerald-600 hover:bg-emerald-700 text-white shadow-md shadow-emerald-600/20 transition flex items-center gap-1.5 cursor-pointer"
@@ -305,7 +332,7 @@ export const AttendanceManagementView: React.FC<AttendanceManagementViewProps> =
                 isLight ? 'bg-indigo-50/40 border-indigo-200' : 'bg-slate-950 border-slate-700'
               }`}
             >
-              {Array.from({ length: 12 }, (_, i) => i + 1).map((c) => (
+              {Array.from({ length: 7 }, (_, i) => i + 1).map((c) => (
                 <option key={c} value={c}>
                   {c}반
                 </option>

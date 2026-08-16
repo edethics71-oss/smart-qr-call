@@ -5,6 +5,7 @@ import { TeacherManagementView } from './components/TeacherManagementView';
 import { TeacherToStudentDispatch } from './components/TeacherToStudentDispatch';
 import { AttendanceManagementView } from './components/AttendanceManagementView';
 import { TeacherWorkNotesView } from './components/TeacherWorkNotesView';
+import { StudentRosterManagementView } from './components/StudentRosterManagementView';
 import { StudentMobileView } from './components/StudentMobileView';
 import { FirebaseGuideModal } from './components/FirebaseGuideModal';
 import { PrintablePlacardModal } from './components/PrintablePlacardModal';
@@ -21,11 +22,12 @@ import {
   Users,
   Building2,
   Sparkles,
-  Palette
+  Palette,
+  FileSpreadsheet
 } from 'lucide-react';
 import type { Teacher, ThemeType } from './types';
 
-export type TeacherPortalTab = 'receiver' | 'dispatch' | 'attendance' | 'worknotes' | 'management';
+export type TeacherPortalTab = 'receiver' | 'dispatch' | 'attendance' | 'worknotes' | 'students' | 'management';
 
 export default function App() {
   const parseLocation = () => {
@@ -33,19 +35,29 @@ export default function App() {
       return { path: '/teacher', params: new URLSearchParams() };
     }
     const pathname = window.location.pathname || '/teacher';
-    const search = window.location.search;
-    const hash = window.location.hash;
+    const search = window.location.search || '';
+    const hash = window.location.hash || '';
 
     let effectivePath = pathname;
     let effectiveParams = new URLSearchParams(search);
 
-    if (hash.startsWith('#/student') || hash.startsWith('#student')) {
-      effectivePath = '/student';
-      const hashQueryIndex = hash.indexOf('?');
-      if (hashQueryIndex !== -1) {
-        effectiveParams = new URLSearchParams(hash.substring(hashQueryIndex));
-      }
-    } else if (effectiveParams.get('view') === 'student') {
+    // Merge search and hash query parameters
+    if (hash.includes('?')) {
+      const hashQuery = hash.substring(hash.indexOf('?'));
+      const hashParams = new URLSearchParams(hashQuery);
+      hashParams.forEach((val, key) => {
+        effectiveParams.set(key, val);
+      });
+    }
+
+    if (
+      pathname.includes('/student') ||
+      hash.startsWith('#/student') ||
+      hash.startsWith('#student') ||
+      effectiveParams.get('view') === 'student' ||
+      effectiveParams.has('grade') ||
+      effectiveParams.has('room')
+    ) {
       effectivePath = '/student';
     }
 
@@ -56,8 +68,8 @@ export default function App() {
   const [currentPath, setCurrentPath] = useState<string>(initialLoc.path);
   const [searchParams, setSearchParams] = useState<URLSearchParams>(initialLoc.params);
 
-  // Teacher portal sub-tabs
-  const [teacherSubTab, setTeacherSubTab] = useState<TeacherPortalTab>('receiver');
+  // Teacher portal sub-tabs - Default to dispatch (학생 호출 & 전달사항)
+  const [teacherSubTab, setTeacherSubTab] = useState<TeacherPortalTab>('dispatch');
 
   // Theme: 'vibrant-palette' | 'vibrant-dark'
   const [theme, setTheme] = useState<ThemeType>('vibrant-palette');
@@ -148,18 +160,18 @@ export default function App() {
               <div>
                 <h1 className="text-xl sm:text-2xl font-black tracking-tight flex items-center gap-2">
                   <span className={isLight ? 'text-slate-900' : 'text-white'}>
-                    스마트 교직원 종합 업무 포털
+                    담임 업무 지원
                   </span>
                   <span className="text-xs px-2.5 py-0.5 rounded-full font-black bg-indigo-100 dark:bg-slate-800 text-indigo-700 dark:text-emerald-400">
                     EduPass Hub
                   </span>
                 </h1>
                 <p className={`text-xs mt-0.5 ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
-                  교무실 QR 호출 수신 • 학생 호출 및 공지 발송 • 아침 등교 출결 • 교직원 업무 쪽지 수합
+                  학생 실시간 호출 및 전달사항 • 아침 등교 출결 • 교직원 업무 쪽지 수합 • 교직원 명단 엑셀 관리
                 </p>
               </div>
 
-              {/* 5 Primary Portal Tabs */}
+              {/* 6 Primary Portal Tabs */}
               <div
                 className={`flex flex-wrap items-center gap-1.5 p-1.5 rounded-2xl border self-start xl:self-auto ${
                   isLight
@@ -167,21 +179,6 @@ export default function App() {
                     : 'bg-slate-900/90 border-slate-800'
                 }`}
               >
-                <button
-                  id="tab-teacher-receiver-btn"
-                  onClick={() => setTeacherSubTab('receiver')}
-                  className={`px-3 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer ${
-                    teacherSubTab === 'receiver'
-                      ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
-                      : isLight
-                      ? 'text-slate-600 hover:text-indigo-700 hover:bg-indigo-50/60'
-                      : 'text-slate-400 hover:text-white hover:bg-slate-800'
-                  }`}
-                >
-                  <Bell className="w-3.5 h-3.5" />
-                  <span>문앞 호출 수신</span>
-                </button>
-
                 <button
                   id="tab-teacher-dispatch-btn"
                   onClick={() => setTeacherSubTab('dispatch')}
@@ -238,8 +235,38 @@ export default function App() {
                       : 'text-slate-400 hover:text-white hover:bg-slate-800'
                   }`}
                 >
-                  <QrCode className="w-3.5 h-3.5" />
-                  <span>명단·위원회 & QR</span>
+                  <FileSpreadsheet className="w-3.5 h-3.5" />
+                  <span>교직원 명단 & 위원회·교과</span>
+                </button>
+
+                <button
+                  id="tab-teacher-receiver-btn"
+                  onClick={() => setTeacherSubTab('receiver')}
+                  className={`px-3 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer ${
+                    teacherSubTab === 'receiver'
+                      ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
+                      : isLight
+                      ? 'text-slate-600 hover:text-indigo-700 hover:bg-indigo-50/60'
+                      : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                  }`}
+                >
+                  <Bell className="w-3.5 h-3.5" />
+                  <span>교무실 방문 호출</span>
+                </button>
+
+                <button
+                  id="tab-teacher-students-btn"
+                  onClick={() => setTeacherSubTab('students')}
+                  className={`px-3 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 cursor-pointer ${
+                    teacherSubTab === 'students'
+                      ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
+                      : isLight
+                      ? 'text-slate-600 hover:text-indigo-700 hover:bg-indigo-50/60'
+                      : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                  }`}
+                >
+                  <Users className="w-3.5 h-3.5" />
+                  <span>학생 명렬 현황</span>
                 </button>
               </div>
             </div>
@@ -260,11 +287,18 @@ export default function App() {
             )}
 
             {teacherSubTab === 'attendance' && (
-              <AttendanceManagementView theme={theme} />
+              <AttendanceManagementView
+                theme={theme}
+                onNavigateToRoster={() => setTeacherSubTab('students')}
+              />
             )}
 
             {teacherSubTab === 'worknotes' && (
               <TeacherWorkNotesView theme={theme} teachers={teachers} />
+            )}
+
+            {teacherSubTab === 'students' && (
+              <StudentRosterManagementView theme={theme} />
             )}
 
             {teacherSubTab === 'management' && (

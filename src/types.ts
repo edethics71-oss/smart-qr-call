@@ -5,6 +5,15 @@ export interface Teacher {
   name: string;
   room: string;
   subject?: string;
+  department?: string; // 소속 부서 (교무기획부, 학생안전부, 진로진학부 등)
+  grade?: number; // 1, 2, 3 (0 또는 undefined = 비담임)
+  classNum?: number; // 1 ~ 7
+  homeroomRole?: string; // e.g. '1학년 3반 담임', '2학년 부장', '비담임'
+  duty?: string; // 담당 업무 (나이스 학적, 평가계, 학폭예방 등)
+  committees?: string[]; // 소속 위원회 e.g. ['기획위원회', '교육과정위원회', '인사자문위원회']
+  extension?: string; // 내선 번호
+  email?: string;
+  notes?: string; // 비고
   tags?: string[]; // e.g. ['1학년 담임', '수학과', '부장교사', '기획위원회', '교육과정위원회']
   createdAt?: number;
 }
@@ -55,8 +64,8 @@ export type NoticeType =
   | 'homeroom_morning' // 조회 알림장
   | 'homeroom_closing' // 종례 알림장
   | 'class'            // 학급 전달사항
-  | 'grade'            // 학년 전달사항
-  | 'department'       // 부서별 전달사항 (교무부, 안전부, 진로부 등)
+  | 'grade'            // 학년 전달사항 (특정 학년 복수 선택 가능: 1, 2, 3학년)
+  | 'department'       // 부서별 전달사항 (교원, 학생/학년별 수신 대상 지정 가능)
   | 'school';          // 전교생 공지
 
 export interface SchoolNotice {
@@ -65,10 +74,12 @@ export interface SchoolNotice {
   title: string;
   content: string;
   senderName: string;
-  senderRole: string; // e.g. '1학년 3반 담임', '교무기획부장', '1학년 부장'
-  targetGrade: number; // 0 = 전교생/전학년
+  senderRole: string; // e.g. '1학년 3반 담임', '교무기획부장', '1·2학년 부장'
+  targetGrade: number; // 0 = 전교생/전학년 (레거시 및 단일 지정 호환)
+  targetGrades?: number[]; // [1, 2], [2, 3], [1, 2, 3] 등 복수 학년 지원 (빈 배열/미지정 시 전체)
   targetClass: number; // 0 = 학년 전체
   targetDepartment?: string;
+  targetAudience?: 'all' | 'teachers' | 'students'; // 교원 대상 / 학생 대상 / 전체
   isUrgent?: boolean;
   date: string; // YYYY-MM-DD
   confirmedStudentIds: string[]; // e.g. ['1-3-15-김철수', '1-3-22-이영희']
@@ -128,4 +139,20 @@ export interface StudentProfile {
   classNum: number;
   studentNumber: number;
   name: string;
+}
+
+// -------------------------------------------------------------
+// 5. School Student Roster (학적 학생 명렬)
+// -------------------------------------------------------------
+export interface StudentRecord {
+  id: string;
+  grade: number; // 1, 2, 3
+  classNum: number; // 1 ~ 7
+  studentNumber: number; // 1 ~ 45
+  name: string;
+  gender?: 'M' | 'F' | string;
+  status?: 'active' | 'transferred' | 'leave'; // 재학, 전출, 휴학
+  parentContact?: string;
+  notes?: string;
+  createdAt?: number;
 }

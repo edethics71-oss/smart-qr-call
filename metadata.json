@@ -1,6 +1,6 @@
 {
-  "name": "스마트 QR 방문 접수처",
-  "description": "교무실 앞 QR 방문 호출, 교사-학생 실시간 호출/알림, 조회·종례 및 학년/부서 전달사항, 등교 원터치 출결 체크(나이스 연동), 교직원 업무 쪽지 및 수합 올인원 시스템",
+  "name": "담임 업무 지원",
+  "description": "담임 교사를 위한 학생 호출 및 전달사항, 등교 출결 관리, 교직원 업무 쪽지 및 교무실 알림 올인원 지원 포털",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }
