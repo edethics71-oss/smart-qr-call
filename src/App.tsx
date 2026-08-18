@@ -9,6 +9,7 @@ import { StudentRosterManagementView } from './components/StudentRosterManagemen
 import { StudentMobileView } from './components/StudentMobileView';
 import { FirebaseGuideModal } from './components/FirebaseGuideModal';
 import { PrintablePlacardModal } from './components/PrintablePlacardModal';
+import { ManualDownloadModal } from './components/ManualDownloadModal';
 import { dbService } from './lib/firebase';
 import {
   Bell,
@@ -23,7 +24,8 @@ import {
   Building2,
   Sparkles,
   Palette,
-  FileSpreadsheet
+  FileSpreadsheet,
+  BookOpen
 } from 'lucide-react';
 import type { Teacher, ThemeType } from './types';
 
@@ -79,6 +81,7 @@ export default function App() {
 
   // Modals
   const [isFirebaseGuideOpen, setIsFirebaseGuideOpen] = useState<boolean>(false);
+  const [isManualModalOpen, setIsManualModalOpen] = useState<boolean>(false);
   const [placardRoom, setPlacardRoom] = useState<string | null>(null);
 
   // Subscribe to all teachers
@@ -136,6 +139,7 @@ export default function App() {
           theme={theme}
           onToggleTheme={toggleTheme}
           onOpenFirebaseGuide={() => setIsFirebaseGuideOpen(true)}
+          onOpenManual={() => setIsManualModalOpen(true)}
         />
       )}
 
@@ -157,18 +161,30 @@ export default function App() {
                 isLight ? 'border-indigo-100' : 'border-slate-800'
               }`}
             >
-              <div>
-                <h1 className="text-xl sm:text-2xl font-black tracking-tight flex items-center gap-2">
-                  <span className={isLight ? 'text-slate-900' : 'text-white'}>
-                    담임 업무 지원
-                  </span>
-                  <span className="text-xs px-2.5 py-0.5 rounded-full font-black bg-indigo-100 dark:bg-slate-800 text-indigo-700 dark:text-emerald-400">
-                    EduPass Hub
-                  </span>
-                </h1>
-                <p className={`text-xs mt-0.5 ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
-                  학생 실시간 호출 및 전달사항 • 아침 등교 출결 • 교직원 업무 쪽지 수합 • 교직원 명단 엑셀 관리
-                </p>
+              <div className="flex flex-wrap items-center justify-between gap-3 w-full xl:w-auto">
+                <div>
+                  <h1 className="text-xl sm:text-2xl font-black tracking-tight flex items-center gap-2">
+                    <span className={isLight ? 'text-slate-900' : 'text-white'}>
+                      담임 업무 지원
+                    </span>
+                    <span className="text-xs px-2.5 py-0.5 rounded-full font-black bg-indigo-100 dark:bg-slate-800 text-indigo-700 dark:text-emerald-400">
+                      EduPass Hub
+                    </span>
+                  </h1>
+                  <p className={`text-xs mt-0.5 ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
+                    학생 실시간 호출 및 전달사항 • 아침 등교 출결 • 교직원 업무 쪽지 수합 • 교직원 명단 엑셀 관리
+                  </p>
+                </div>
+
+                {/* Quick Manual Button in Header */}
+                <button
+                  onClick={() => setIsManualModalOpen(true)}
+                  className="px-3.5 py-1.5 rounded-2xl text-xs font-black bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white shadow-md shadow-indigo-600/20 flex items-center gap-1.5 transition cursor-pointer"
+                  title="학교 도입 시나리오별 안내 및 매뉴얼 파일 다운로드"
+                >
+                  <BookOpen className="w-3.5 h-3.5" />
+                  <span>📖 활용 매뉴얼 파일 다운로드</span>
+                </button>
               </div>
 
               {/* 6 Primary Portal Tabs */}
@@ -323,6 +339,11 @@ export default function App() {
       {/* Firebase Setup & Deployment Guide Modal */}
       {isFirebaseGuideOpen && (
         <FirebaseGuideModal onClose={() => setIsFirebaseGuideOpen(false)} />
+      )}
+
+      {/* Comprehensive Manual Download & Viewer Modal */}
+      {isManualModalOpen && (
+        <ManualDownloadModal theme={theme} onClose={() => setIsManualModalOpen(false)} />
       )}
     </div>
   );

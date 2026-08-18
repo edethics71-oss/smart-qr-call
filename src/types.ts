@@ -68,6 +68,13 @@ export type NoticeType =
   | 'department'       // 부서별 전달사항 (교원, 학생/학년별 수신 대상 지정 가능)
   | 'school';          // 전교생 공지
 
+export interface NoticeAttachment {
+  name: string;
+  size?: string;
+  type?: string;
+  dataUrl?: string; // base64 or blob url for direct download
+}
+
 export interface SchoolNotice {
   id: string;
   type: NoticeType;
@@ -83,6 +90,12 @@ export interface SchoolNotice {
   isUrgent?: boolean;
   date: string; // YYYY-MM-DD
   confirmedStudentIds: string[]; // e.g. ['1-3-15-김철수', '1-3-22-이영희']
+  // Attachments & Application/Survey Link
+  attachments?: NoticeAttachment[];
+  linkUrl?: string; // 별도 신청 / 설문 링크 URL
+  linkLabel?: string; // 버튼 문구 e.g. '선착순 신청하기', '온라인 설문지 작성'
+  isFirstCome?: boolean; // 선착순 신청 플래그
+  deadline?: string; // 마감 일시 또는 선착순 인원 안내
   createdAt: number;
 }
 

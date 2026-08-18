@@ -25,7 +25,11 @@ import {
   Calendar,
   Layers,
   ChevronRight,
-  Info
+  Info,
+  Paperclip,
+  Link2,
+  ExternalLink,
+  Download
 } from 'lucide-react';
 import { dbService } from '../lib/firebase';
 import type {
@@ -1224,6 +1228,16 @@ export const StudentMobileView: React.FC<StudentMobileViewProps> = ({
                             🚨 긴급
                           </span>
                         )}
+                        {n.isFirstCome && (
+                          <span className="px-1.5 py-0.2 rounded-md text-[10px] font-black bg-gradient-to-r from-rose-500 to-amber-500 text-white flex items-center gap-0.5 animate-pulse">
+                            <Flame className="w-2.5 h-2.5" /> 선착순 신청
+                          </span>
+                        )}
+                        {n.deadline && (
+                          <span className="px-1.5 py-0.2 rounded-md text-[10px] font-bold bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300">
+                            ⏰ {n.deadline}
+                          </span>
+                        )}
                       </div>
                       <span className="text-[10px] text-slate-400">{n.senderRole} {n.senderName}</span>
                     </div>
@@ -1231,9 +1245,63 @@ export const StudentMobileView: React.FC<StudentMobileViewProps> = ({
                     <h4 className="text-xs font-black text-slate-900 dark:text-white mb-1">
                       {n.title}
                     </h4>
-                    <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed mb-3 whitespace-pre-line">
+                    <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed mb-2.5 whitespace-pre-line">
                       {n.content}
                     </p>
+
+                    {/* Notice Attachments (Downloadable) */}
+                    {n.attachments && n.attachments.length > 0 && (
+                      <div className="mb-3 p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 space-y-1.5">
+                        <div className="text-[11px] font-black text-slate-700 dark:text-slate-300 flex items-center gap-1">
+                          <Paperclip className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+                          <span>첨부파일 ({n.attachments.length}개)</span>
+                        </div>
+                        <div className="space-y-1">
+                          {n.attachments.map((att, attIdx) => (
+                            <a
+                              key={attIdx}
+                              href={att.dataUrl || '#'}
+                              download={att.name}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="flex items-center justify-between p-2 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 hover:border-indigo-500 transition text-xs group"
+                            >
+                              <div className="flex items-center gap-2 min-w-0">
+                                <FileText className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
+                                <span className="font-bold text-slate-800 dark:text-slate-200 truncate group-hover:text-indigo-600 dark:group-hover:text-indigo-400">
+                                  {att.name}
+                                </span>
+                                {att.size && <span className="text-[10px] text-slate-400 shrink-0">({att.size})</span>}
+                              </div>
+                              <div className="flex items-center gap-1 text-[11px] text-indigo-600 dark:text-indigo-400 font-bold shrink-0">
+                                <Download className="w-3.5 h-3.5" />
+                                <span>다운로드</span>
+                              </div>
+                            </a>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Notice External Application / Survey Link */}
+                    {n.linkUrl && (
+                      <div className="mb-3">
+                        <a
+                          href={n.linkUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className={`w-full py-2.5 px-3.5 rounded-xl font-black text-xs flex items-center justify-center gap-2 shadow-md transition ${
+                            n.isFirstCome
+                              ? 'bg-gradient-to-r from-rose-600 to-purple-600 hover:from-rose-700 hover:to-purple-700 text-white shadow-rose-600/20'
+                              : 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-indigo-600/20'
+                          }`}
+                        >
+                          {n.isFirstCome ? <Flame className="w-4 h-4 text-amber-300 animate-pulse" /> : <Link2 className="w-4 h-4" />}
+                          <span>{n.linkLabel || '선착순 신청 / 설문지 작성 바로가기'}</span>
+                          <ExternalLink className="w-3.5 h-3.5" />
+                        </a>
+                      </div>
+                    )}
 
                     <div className="flex items-center justify-between pt-2 border-t text-xs">
                       <span className="text-[11px] text-slate-400">

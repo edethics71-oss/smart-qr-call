@@ -1429,7 +1429,10 @@ export const dbService = {
     );
   },
 
-  async bulkImportStudents(students: Omit<StudentRecord, 'id' | 'createdAt'>[]): Promise<number> {
+  async bulkImportStudents(
+    students: Omit<StudentRecord, 'id' | 'createdAt'>[],
+    options?: { overwriteExisting?: boolean; clearTargetClassesFirst?: boolean }
+  ): Promise<number> {
     if (firestore) {
       try {
         const ref = collection(firestore, 'students_roster');
@@ -1442,14 +1445,32 @@ export const dbService = {
       }
     }
 
-    const current = getLocal<StudentRecord[]>(STORAGE_STUDENTS_KEY, DEFAULT_STUDENTS);
+    let current = getLocal<StudentRecord[]>(STORAGE_STUDENTS_KEY, DEFAULT_STUDENTS);
+
+    if (options?.clearTargetClassesFirst) {
+      // Find all unique (grade, classNum) in the new import
+      const targetPairs = new Set(students.map((s) => `${s.grade}-${s.classNum}`));
+      current = current.filter((s) => !targetPairs.has(`${s.grade}-${s.classNum}`));
+    } else if (options?.overwriteExisting) {
+      // Upsert by key (grade-class-number)
+      const importKeyMap = new Map(students.map((s) => [`${s.grade}-${s.classNum}-${s.studentNumber}`, s]));
+      current = current.filter((s) => !importKeyMap.has(`${s.grade}-${s.classNum}-${s.studentNumber}`));
+    }
+
     const newStudents: StudentRecord[] = students.map((s, idx) => ({
       ...s,
-      id: `std-bulk-${Date.now()}-${idx}`,
+      id: `std-bulk-${Date.now()}-${idx}-${Math.floor(Math.random() * 1000)}`,
       createdAt: Date.now(),
     }));
 
-    saveLocal(STORAGE_STUDENTS_KEY, [...current, ...newStudents], 'STUDENTS_UPDATED');
+    const combined = [...current, ...newStudents];
+    combined.sort((a, b) => {
+      if (a.grade !== b.grade) return a.grade - b.grade;
+      if (a.classNum !== b.classNum) return a.classNum - b.classNum;
+      return a.studentNumber - b.studentNumber;
+    });
+
+    saveLocal(STORAGE_STUDENTS_KEY, combined, 'STUDENTS_UPDATED');
     return newStudents.length;
   },
 
@@ -1462,7 +1483,26 @@ export const dbService = {
     );
   },
 
+  async clearAllStudents(): Promise<void> {
+    saveLocal(STORAGE_STUDENTS_KEY, [], 'STUDENTS_UPDATED');
+  },
+
   async resetDefaultStudents(): Promise<void> {
+    if (firestore) {
+      try {
+        const ref = collection(firestore, 'students_roster');
+        const snapshot = await getDocs(ref);
+        for (const docSnap of snapshot.docs) {
+          await deleteDoc(docSnap.ref);
+        }
+        for (const s of DEFAULT_STUDENTS) {
+          await addDoc(ref, { ...s, createdAt: Date.now() });
+        }
+        return;
+      } catch (err) {
+        console.error('Error resetting students in Firestore:', err);
+      }
+    }
     saveLocal(STORAGE_STUDENTS_KEY, DEFAULT_STUDENTS, 'STUDENTS_UPDATED');
   },
 };

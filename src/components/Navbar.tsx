@@ -22,6 +22,7 @@ interface NavbarProps {
   theme: ThemeType;
   onToggleTheme: () => void;
   onOpenFirebaseGuide: () => void;
+  onOpenManual?: () => void;
   onOpenQuickQr?: () => void;
   onOpenSimulator?: () => void;
 }
@@ -32,6 +33,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   theme,
   onToggleTheme,
   onOpenFirebaseGuide,
+  onOpenManual,
   onOpenQuickQr,
   onOpenSimulator,
 }) => {
@@ -119,6 +121,23 @@ export const Navbar: React.FC<NavbarProps> = ({
           >
             <Palette className="w-4 h-4 text-indigo-500" />
           </button>
+
+          {/* Comprehensive Manual Download Button */}
+          {onOpenManual && (
+            <button
+              id="nav-manual-btn"
+              onClick={onOpenManual}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold border flex items-center gap-1.5 transition cursor-pointer shadow-sm ${
+                isLight
+                  ? 'bg-gradient-to-r from-indigo-50 to-purple-50 text-indigo-700 border-indigo-200 hover:from-indigo-100 hover:to-purple-100'
+                  : 'bg-indigo-950/60 text-indigo-300 border-indigo-700/60 hover:bg-indigo-900'
+              }`}
+              title="운영 시나리오, 시험기간 통제, 담임교사·학생 활용 매뉴얼 및 파일 다운로드"
+            >
+              <BookOpen className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+              <span className="font-black">📖 활용 매뉴얼</span>
+            </button>
+          )}
 
           {/* Firebase Status & Guide Trigger */}
           <button

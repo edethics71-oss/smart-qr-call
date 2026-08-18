@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   Send,
   Bell,
@@ -17,13 +17,20 @@ import {
   Flame,
   Radio,
   FileText,
-  Smartphone
+  Smartphone,
+  Paperclip,
+  Link2,
+  ExternalLink,
+  Download,
+  FileSpreadsheet
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { dbService } from '../lib/firebase';
 import { getStudentDirectLoginUrl } from '../lib/urlUtils';
-import type { Teacher, TeacherCallToStudent, SchoolNotice, ThemeType, NoticeType, StudentRecord } from '../types';
+import type { Teacher, TeacherCallToStudent, SchoolNotice, ThemeType, NoticeType, StudentRecord, NoticeAttachment } from '../types';
 import { VirtualStudentSimulatorModal } from './VirtualStudentSimulatorModal';
+
+export const GEMINI_SURVEY_APP_URL = 'https://share.gemini.google/8FT6YerwHNHU';
 
 interface TeacherToStudentDispatchProps {
   theme: ThemeType;
@@ -79,9 +86,64 @@ export const TeacherToStudentDispatch: React.FC<TeacherToStudentDispatchProps> =
   const [snContent, setSnContent] = useState<string>('');
   const [snIsUrgent, setSnIsUrgent] = useState<boolean>(false);
 
+  // Attachments state
+  const [snAttachments, setSnAttachments] = useState<NoticeAttachment[]>([]);
+  const noticeAttachmentInputRef = useRef<HTMLInputElement>(null);
+
+  // External Application / Survey Link state (선착순 신청 링크)
+  const [snHasLink, setSnHasLink] = useState<boolean>(false);
+  const [snLinkUrl, setSnLinkUrl] = useState<string>('');
+  const [snLinkLabel, setSnLinkLabel] = useState<string>('선착순 신청하기');
+  const [snIsFirstCome, setSnIsFirstCome] = useState<boolean>(false);
+  const [snDeadline, setSnDeadline] = useState<string>('');
+
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [successToast, setSuccessToast] = useState('');
   const [isSimulatorOpen, setIsSimulatorOpen] = useState(false);
+
+  // Attachment file upload handler
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    Array.from(files).forEach((file: File) => {
+      const sizeStr =
+        file.size > 1024 * 1024
+          ? (file.size / (1024 * 1024)).toFixed(1) + ' MB'
+          : Math.round(file.size / 1024) + ' KB';
+
+      const reader = new FileReader();
+      reader.onload = () => {
+        setSnAttachments((prev) => [
+          ...prev,
+          {
+            name: file.name,
+            size: sizeStr,
+            type: file.type,
+            dataUrl: reader.result as string,
+          },
+        ]);
+      };
+      reader.readAsDataURL(file);
+    });
+
+    e.target.value = '';
+    showToast('📎 첨부파일이 등록되었습니다.');
+  };
+
+  const handleRemoveAttachment = (index: number) => {
+    setSnAttachments((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  // Quick preset: Apply Gemini Survey App URL
+  const handleApplyGeminiSurveyPreset = () => {
+    setSnHasLink(true);
+    setSnLinkUrl(GEMINI_SURVEY_APP_URL);
+    setSnLinkLabel('📝 설문지 작성 / 선착순 신청하기');
+    setSnIsFirstCome(true);
+    setSnDeadline('선착순 마감 시 종료');
+    showToast('✨ 내가 만든 제미나이 설문지 앱 주소와 설정이 자동 입력되었습니다!');
+  };
 
   // Live Subscriptions
   const [activeTeacherCalls, setActiveTeacherCalls] = useState<TeacherCallToStudent[]>([]);
@@ -270,12 +332,23 @@ export const TeacherToStudentDispatch: React.FC<TeacherToStudentDispatchProps> =
         targetAudience: finalTargetAudience,
         isUrgent: snIsUrgent,
         date: new Date().toISOString().slice(0, 10),
+        attachments: snAttachments.length > 0 ? snAttachments : undefined,
+        linkUrl: snHasLink && snLinkUrl.trim() ? snLinkUrl.trim() : undefined,
+        linkLabel: snHasLink && snLinkLabel.trim() ? snLinkLabel.trim() : undefined,
+        isFirstCome: snHasLink ? snIsFirstCome : false,
+        deadline: snHasLink && snDeadline.trim() ? snDeadline.trim() : undefined,
       });
 
       showToast(`📢 [${roleStr}] 공지사항이 성공적으로 배포되었습니다!`);
       setSnTitle('');
       setSnContent('');
       setSnIsUrgent(false);
+      setSnAttachments([]);
+      setSnHasLink(false);
+      setSnLinkUrl('');
+      setSnLinkLabel('선착순 신청하기');
+      setSnIsFirstCome(false);
+      setSnDeadline('');
     } catch (err) {
       console.error(err);
       alert('공지 배포 중 오류가 발생했습니다.');
@@ -818,9 +891,51 @@ export const TeacherToStudentDispatch: React.FC<TeacherToStudentDispatchProps> =
             {/* MODE 3: School / Grade / Department Notice Form */}
             {dispatchMode === 'school_notice' && (
               <form onSubmit={handleSendSchoolNotice} className="space-y-5">
-                <div className="flex items-center gap-2 pb-3 border-b border-indigo-50 dark:border-slate-800">
-                  <Megaphone className="w-5 h-5 text-purple-600 dark:text-purple-400" />
-                  <h3 className="font-black text-lg">학년 / 부서 / 전교생 공지 전달</h3>
+                <div className="flex items-center justify-between pb-3 border-b border-indigo-50 dark:border-slate-800">
+                  <div className="flex items-center gap-2">
+                    <Megaphone className="w-5 h-5 text-purple-600 dark:text-purple-400" />
+                    <h3 className="font-black text-lg">학년 / 부서 / 전교생 공지 전달</h3>
+                  </div>
+                  <a
+                    href={GEMINI_SURVEY_APP_URL}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-purple-100 hover:bg-purple-200 text-purple-800 dark:bg-purple-950 dark:hover:bg-purple-900 dark:text-purple-200 text-xs font-bold transition shadow-xs cursor-pointer"
+                    title="선생님이 제작하신 제미나이 설문지 앱 바로가기"
+                  >
+                    <Sparkles className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
+                    <span>제미나이 설문지 앱 열기</span>
+                    <ExternalLink className="w-3 h-3" />
+                  </a>
+                </div>
+
+                {/* Gemini Survey Tool Banner */}
+                <div className="p-3.5 rounded-2xl bg-gradient-to-r from-purple-500/10 via-indigo-500/10 to-blue-500/10 border border-purple-200 dark:border-purple-900/60 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                  <div className="flex items-start gap-2.5">
+                    <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-purple-600 to-indigo-600 text-white flex items-center justify-center shrink-0 shadow-xs mt-0.5">
+                      <Sparkles className="w-4 h-4 text-amber-300" />
+                    </div>
+                    <div>
+                      <div className="font-black text-xs text-purple-950 dark:text-purple-200 flex items-center gap-1.5 flex-wrap">
+                        <span>선착순 신청 & 설문조사 제작 (Gemini 연동)</span>
+                        <span className="px-1.5 py-0.2 rounded text-[10px] bg-purple-600 text-white font-bold">전용 도구</span>
+                      </div>
+                      <p className="text-[11px] text-slate-600 dark:text-slate-400 leading-tight mt-0.5">
+                        선생님께서 제미나이로 제작하신 설문지 앱에서 양식을 만든 후 아래에 링크를 첨부하여 학생들에게 발송할 수 있습니다.
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 w-full sm:w-auto shrink-0">
+                    <a
+                      href={GEMINI_SURVEY_APP_URL}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="w-full sm:w-auto px-3 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-black text-xs flex items-center justify-center gap-1.5 shadow-md shadow-purple-600/20 transition cursor-pointer"
+                    >
+                      <span>📝 설문지 앱 열기</span>
+                      <ExternalLink className="w-3.5 h-3.5" />
+                    </a>
+                  </div>
                 </div>
 
                 <div className="space-y-4">
@@ -1178,6 +1293,164 @@ export const TeacherToStudentDispatch: React.FC<TeacherToStudentDispatchProps> =
                   />
                 </div>
 
+                {/* 3. 첨부파일 등록 (Attachments) */}
+                <div className="p-4 rounded-2xl border bg-slate-50/80 dark:bg-slate-900/60 border-slate-200 dark:border-slate-800 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-black text-slate-700 dark:text-slate-200 flex items-center gap-1.5">
+                      <Paperclip className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+                      <span>첨부파일 등록 (가정통신문, 신청양식, PDF, HWP, 엑셀 등)</span>
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => noticeAttachmentInputRef.current?.click()}
+                      className="px-3 py-1.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:border-indigo-500 font-bold text-xs flex items-center gap-1.5 cursor-pointer shadow-xs transition"
+                    >
+                      <Paperclip className="w-3.5 h-3.5" />
+                      <span>파일 추가하기</span>
+                    </button>
+                    <input
+                      type="file"
+                      ref={noticeAttachmentInputRef}
+                      onChange={handleFileUpload}
+                      multiple
+                      className="hidden"
+                      accept=".pdf,.hwp,.hwpx,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.jpg,.jpeg,.png,.zip"
+                    />
+                  </div>
+
+                  {snAttachments.length > 0 ? (
+                    <div className="space-y-2">
+                      {snAttachments.map((file, idx) => (
+                        <div
+                          key={idx}
+                          className="flex items-center justify-between p-2.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs"
+                        >
+                          <div className="flex items-center gap-2 min-w-0">
+                            <FileText className="w-4 h-4 text-indigo-500 shrink-0" />
+                            <span className="font-bold text-slate-800 dark:text-slate-200 truncate">{file.name}</span>
+                            {file.size && <span className="text-[10px] text-slate-400 shrink-0">({file.size})</span>}
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveAttachment(idx)}
+                            className="p-1 rounded-lg text-slate-400 hover:text-rose-600 transition cursor-pointer shrink-0"
+                            title="첨부파일 삭제"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div
+                      onClick={() => noticeAttachmentInputRef.current?.click()}
+                      className="border-2 border-dashed border-slate-300 dark:border-slate-700 rounded-xl p-3.5 text-center cursor-pointer hover:border-indigo-400 transition"
+                    >
+                      <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">
+                        📎 클릭하여 파일을 선택하거나 첨부할 파일(.pdf, .hwp, .xlsx, 이미지 등)을 등록하세요.
+                      </p>
+                    </div>
+                  )}
+                </div>
+
+                {/* 4. 선착순 신청 / 별도 온라인 설문 링크 설정 */}
+                <div className="p-4 rounded-2xl border bg-purple-50/40 dark:bg-purple-950/20 border-purple-200 dark:border-purple-900/50 space-y-3">
+                  <div className="flex items-center justify-between flex-wrap gap-2">
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        id="chk-sn-haslink"
+                        checked={snHasLink}
+                        onChange={(e) => setSnHasLink(e.target.checked)}
+                        className="w-4 h-4 rounded text-purple-600 cursor-pointer"
+                      />
+                      <label htmlFor="chk-sn-haslink" className="text-xs font-black text-purple-950 dark:text-purple-200 cursor-pointer flex items-center gap-1.5">
+                        <Link2 className="w-4 h-4 text-purple-600 dark:text-purple-400" />
+                        <span>선착순 신청 또는 온라인 설문지 링크 첨부</span>
+                      </label>
+                    </div>
+
+                    {/* Gemini Survey Preset Button */}
+                    <button
+                      type="button"
+                      onClick={handleApplyGeminiSurveyPreset}
+                      className="px-2.5 py-1 rounded-lg bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white font-bold text-[11px] flex items-center gap-1 cursor-pointer shadow-xs transition"
+                      title="제미나이 설문지 앱 주소와 선착순 설정을 1초 만에 자동 입력합니다"
+                    >
+                      <Sparkles className="w-3 h-3 text-amber-300" />
+                      <span>✨ 제미나이 설문지 앱 주소 자동 입력</span>
+                    </button>
+                  </div>
+
+                  {snHasLink && (
+                    <div className="space-y-3 pt-3 border-t border-purple-200/70 dark:border-purple-900/50">
+                      <div>
+                        <label className="block text-[11px] font-bold text-purple-900 dark:text-purple-300 mb-1">
+                          신청 / 설문 링크 URL (https://...) <span className="text-rose-500">*</span>
+                        </label>
+                        <div className="relative">
+                          <input
+                            type="url"
+                            value={snLinkUrl}
+                            onChange={(e) => setSnLinkUrl(e.target.value)}
+                            placeholder="https://..."
+                            className={`w-full pl-8 pr-3 py-2 rounded-xl border text-xs font-bold outline-none ${
+                              isLight ? 'bg-white border-purple-300 focus:border-purple-600' : 'bg-slate-900 border-slate-700 text-white'
+                            }`}
+                          />
+                          <Link2 className="w-4 h-4 absolute left-2.5 top-2.5 text-purple-500" />
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                        <div>
+                          <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-400 mb-1">
+                            버튼 라벨 (학생 화면 표시 문구)
+                          </label>
+                          <input
+                            type="text"
+                            value={snLinkLabel}
+                            onChange={(e) => setSnLinkLabel(e.target.value)}
+                            placeholder="예: 선착순 신청하기, 설문지 작성하기"
+                            className={`w-full px-3 py-2 rounded-xl border text-xs font-bold outline-none ${
+                              isLight ? 'bg-white border-purple-200' : 'bg-slate-900 border-slate-700 text-white'
+                            }`}
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-[11px] font-bold text-slate-600 dark:text-slate-400 mb-1">
+                            마감/선착순 안내 텍스트
+                          </label>
+                          <input
+                            type="text"
+                            value={snDeadline}
+                            onChange={(e) => setSnDeadline(e.target.value)}
+                            placeholder="예: 선착순 30명 마감, 8월 20일 17:00까지"
+                            className={`w-full px-3 py-2 rounded-xl border text-xs font-bold outline-none ${
+                              isLight ? 'bg-white border-purple-200' : 'bg-slate-900 border-slate-700 text-white'
+                            }`}
+                          />
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2 pt-1">
+                        <input
+                          type="checkbox"
+                          id="chk-sn-firstcome"
+                          checked={snIsFirstCome}
+                          onChange={(e) => setSnIsFirstCome(e.target.checked)}
+                          className="w-4 h-4 rounded text-rose-600 cursor-pointer"
+                        />
+                        <label htmlFor="chk-sn-firstcome" className="text-xs font-black text-rose-600 dark:text-rose-400 cursor-pointer flex items-center gap-1">
+                          <Flame className="w-3.5 h-3.5" />
+                          <span>선착순 신청 강조 (학생 화면에 🔥 선착순 신청 뱃지 및 강조 버튼 노출)</span>
+                        </label>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
                 <div className="flex items-center gap-2">
                   <input
                     type="checkbox"
@@ -1324,9 +1597,14 @@ export const TeacherToStudentDispatch: React.FC<TeacherToStudentDispatchProps> =
                     }`}
                   >
                     <div className="flex items-start justify-between gap-2">
-                      <div className="space-y-1">
+                      <div className="space-y-1 w-full">
                         <div className="flex items-center gap-1.5 font-black flex-wrap">
                           {notice.isUrgent && <span className="text-rose-500 font-black">🚨 [긴급]</span>}
+                          {notice.isFirstCome && (
+                            <span className="px-1.5 py-0.2 rounded text-[10px] bg-rose-500 text-white font-bold flex items-center gap-0.5">
+                              <Flame className="w-2.5 h-2.5" /> 선착순
+                            </span>
+                          )}
                           <span>{notice.title}</span>
                         </div>
                         <div className="text-[11px] text-slate-400 flex items-center gap-1.5 flex-wrap">
@@ -1345,11 +1623,34 @@ export const TeacherToStudentDispatch: React.FC<TeacherToStudentDispatchProps> =
                             👁️ {notice.confirmedStudentIds?.length || 0}명 확인 완료
                           </span>
                         </div>
+
+                        {/* Attachments & Link chips in Teacher Feed */}
+                        {((notice.attachments && notice.attachments.length > 0) || notice.linkUrl) && (
+                          <div className="pt-1.5 flex items-center gap-2 flex-wrap">
+                            {notice.attachments && notice.attachments.length > 0 && (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 text-[10px] font-bold">
+                                <Paperclip className="w-2.5 h-2.5" /> 첨부 {notice.attachments.length}개
+                              </span>
+                            )}
+                            {notice.linkUrl && (
+                              <a
+                                href={notice.linkUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-purple-100 dark:bg-purple-950/60 text-purple-800 dark:text-purple-300 text-[10px] font-bold hover:underline"
+                              >
+                                <Link2 className="w-2.5 h-2.5" />
+                                <span>{notice.linkLabel || '신청/설문 링크'}</span>
+                                <ExternalLink className="w-2.5 h-2.5" />
+                              </a>
+                            )}
+                          </div>
+                        )}
                       </div>
 
                       <button
                         onClick={() => handleDeleteNotice(notice.id)}
-                        className="p-1 rounded text-slate-400 hover:text-rose-600 transition cursor-pointer"
+                        className="p-1 rounded text-slate-400 hover:text-rose-600 transition cursor-pointer shrink-0"
                         title="삭제"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
