@@ -9,11 +9,9 @@ interface StudentQuickQrModalProps {
 }
 
 export const StudentQuickQrModal: React.FC<StudentQuickQrModalProps> = ({ onClose, onOpenSimulator }) => {
-  const [useDevDomain, setUseDevDomain] = useState<boolean>(false);
   const [copied, setCopied] = useState<boolean>(false);
-  const [showTroubleshoot, setShowTroubleshoot] = useState<boolean>(true);
 
-  const studentUrl = getPublicStudentUrl(undefined, useDevDomain);
+  const studentUrl = getPublicStudentUrl();
 
   const handleCopy = () => {
     navigator.clipboard.writeText(studentUrl);
@@ -41,34 +39,8 @@ export const StudentQuickQrModal: React.FC<StudentQuickQrModalProps> = ({ onClos
             학생 화면 바로 열기
           </h3>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-            스마트폰 카메라로 비추거나 새 탭으로 열어 테스트하실 수 있습니다.
+            스마트폰 카메라로 아래 QR을 비추거나 새 창으로 열어 확인하실 수 있습니다.
           </p>
-        </div>
-
-        {/* Domain Toggle */}
-        <div className="flex rounded-xl bg-slate-100 dark:bg-slate-800 p-1 text-xs font-bold">
-          <button
-            type="button"
-            onClick={() => setUseDevDomain(false)}
-            className={`flex-1 py-1.5 rounded-lg transition ${
-              !useDevDomain
-                ? 'bg-emerald-600 text-white shadow-sm'
-                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-            }`}
-          >
-            🌐 일반 공유 QR (ais-pre)
-          </button>
-          <button
-            type="button"
-            onClick={() => setUseDevDomain(true)}
-            className={`flex-1 py-1.5 rounded-lg transition ${
-              useDevDomain
-                ? 'bg-indigo-600 text-white shadow-sm'
-                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-            }`}
-          >
-            💻 개발자 전용 QR (ais-dev)
-          </button>
         </div>
 
         {/* Big Crisp QR Code */}

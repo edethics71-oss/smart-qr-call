@@ -1229,23 +1229,40 @@ export const StudentRosterManagementView: React.FC<StudentRosterManagementViewPr
               </p>
             </div>
 
-            {/* Class Breakdown Badges */}
-            <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-left space-y-2">
-              <div className="text-xs font-bold text-slate-600 dark:text-slate-400">
-                등록된 학급별 학생 수:
+            {/* Class Breakdown Badges with Direct QR Placard Open Button */}
+            <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 text-left space-y-2.5">
+              <div className="flex items-center justify-between text-xs font-bold text-slate-600 dark:text-slate-400">
+                <span>등록된 학급별 학생 수 & QR 배부:</span>
+                <span className="text-[11px] text-indigo-600 dark:text-indigo-400 font-bold">
+                  버튼 터치 시 QR 즉시 표시
+                </span>
               </div>
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 {completionResult.classSummary.map((c) => (
                   <div
                     key={`${c.grade}-${c.classNum}`}
-                    className="p-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 flex items-center justify-between text-xs"
+                    className="p-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 flex items-center justify-between text-xs"
                   >
-                    <span className="font-bold text-slate-700 dark:text-slate-300">
-                      {c.grade}학년 {c.classNum}반
-                    </span>
-                    <span className="font-black text-indigo-600 dark:text-indigo-400">
-                      {c.count}명
-                    </span>
+                    <div>
+                      <span className="font-bold text-slate-800 dark:text-slate-200">
+                        {c.grade}학년 {c.classNum}반
+                      </span>
+                      <span className="ml-2 font-black text-indigo-600 dark:text-indigo-400">
+                        {c.count}명 등록
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPlacardGrade(c.grade);
+                        setPlacardClass(c.classNum);
+                        setIsClassPlacardOpen(true);
+                      }}
+                      className="px-2.5 py-1 rounded-lg bg-emerald-50 dark:bg-emerald-950/60 hover:bg-emerald-100 text-emerald-700 dark:text-emerald-300 font-black text-[11px] border border-emerald-200 dark:border-emerald-800 flex items-center gap-1 cursor-pointer transition shadow-2xs"
+                    >
+                      <QrCode className="w-3.5 h-3.5" />
+                      <span>{c.classNum}반 QR 열기</span>
+                    </button>
                   </div>
                 ))}
               </div>
@@ -1536,57 +1553,75 @@ export const StudentRosterManagementView: React.FC<StudentRosterManagementViewPr
         </div>
 
         {/* 1반 ~ 7반 Class Pill Tabs Bar */}
-        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none text-xs font-bold">
-          <button
-            onClick={() => setSelectedClass(0)}
-            className={`px-3.5 py-2 rounded-xl transition cursor-pointer flex items-center gap-1.5 shrink-0 ${
-              selectedClass === 0
-                ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30 font-black'
-                : isLight
-                ? 'bg-slate-100 text-slate-600 hover:bg-indigo-50'
-                : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
-            }`}
-          >
-            <span>전체 반 보기</span>
-            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-black/10 dark:bg-white/20">
-              {filteredStudents.length}명
-            </span>
-          </button>
+        <div className="flex flex-wrap items-center justify-between gap-2 text-xs font-bold">
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
+            <button
+              onClick={() => setSelectedClass(0)}
+              className={`px-3.5 py-2 rounded-xl transition cursor-pointer flex items-center gap-1.5 shrink-0 ${
+                selectedClass === 0
+                  ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30 font-black'
+                  : isLight
+                  ? 'bg-slate-100 text-slate-600 hover:bg-indigo-50'
+                  : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+              }`}
+            >
+              <span>전체 반 보기</span>
+              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-black/10 dark:bg-white/20">
+                {filteredStudents.length}명
+              </span>
+            </button>
 
-          {availableClasses.map((c) => {
-            const count = classCounts[c] || 0;
-            const isSelected = selectedClass === c;
-            return (
-              <button
-                key={c}
-                onClick={() => setSelectedClass(c)}
-                className={`px-3 py-2 rounded-xl transition cursor-pointer flex items-center gap-1.5 shrink-0 border ${
-                  isSelected
-                    ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm font-black'
-                    : count > 0
-                    ? isLight
-                      ? 'bg-white border-slate-200 text-slate-700 hover:border-indigo-300'
-                      : 'bg-slate-800/80 border-slate-700 text-slate-200 hover:border-slate-600'
-                    : isLight
-                    ? 'bg-slate-50 border-slate-200/60 text-slate-400 hover:bg-slate-100'
-                    : 'bg-slate-900 border-slate-800 text-slate-500 hover:bg-slate-800'
-                }`}
-              >
-                <span>{c}반</span>
-                <span
-                  className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
+            {availableClasses.map((c) => {
+              const count = classCounts[c] || 0;
+              const isSelected = selectedClass === c;
+              return (
+                <button
+                  key={c}
+                  onClick={() => setSelectedClass(c)}
+                  className={`px-3 py-2 rounded-xl transition cursor-pointer flex items-center gap-1.5 shrink-0 border ${
                     isSelected
-                      ? 'bg-white/20 text-white'
+                      ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm font-black'
                       : count > 0
-                      ? 'bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300'
-                      : 'bg-slate-200/60 dark:bg-slate-800 text-slate-400'
+                      ? isLight
+                        ? 'bg-white border-slate-200 text-slate-700 hover:border-indigo-300'
+                        : 'bg-slate-800/80 border-slate-700 text-slate-200 hover:border-slate-600'
+                      : isLight
+                      ? 'bg-slate-50 border-slate-200/60 text-slate-400 hover:bg-slate-100'
+                      : 'bg-slate-900 border-slate-800 text-slate-500 hover:bg-slate-800'
                   }`}
                 >
-                  {count}
-                </span>
-              </button>
-            );
-          })}
+                  <span>{c}반</span>
+                  <span
+                    className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
+                      isSelected
+                        ? 'bg-white/20 text-white'
+                        : count > 0
+                        ? 'bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300'
+                        : 'bg-slate-200/60 dark:bg-slate-800 text-slate-400'
+                    }`}
+                  >
+                    {count}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Quick Print QR for Current Selected Class */}
+          <button
+            type="button"
+            onClick={() => {
+              setPlacardGrade(selectedGrade > 0 ? selectedGrade : 1);
+              setPlacardClass(selectedClass > 0 ? selectedClass : 1);
+              setIsClassPlacardOpen(true);
+            }}
+            className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs flex items-center gap-1.5 cursor-pointer shadow-sm transition active:scale-95 shrink-0"
+          >
+            <QrCode className="w-4 h-4" />
+            <span>
+              {selectedGrade > 0 ? selectedGrade : 1}학년 {selectedClass > 0 ? selectedClass : 1}반 QR 안내판 열기
+            </span>
+          </button>
         </div>
 
         {/* Student Table */}

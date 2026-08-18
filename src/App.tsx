@@ -11,6 +11,7 @@ import { FirebaseGuideModal } from './components/FirebaseGuideModal';
 import { PrintablePlacardModal } from './components/PrintablePlacardModal';
 import { ManualDownloadModal } from './components/ManualDownloadModal';
 import { CleanSlateResetModal } from './components/CleanSlateResetModal';
+import { GlobalPendingCallModal } from './components/GlobalPendingCallModal';
 import { dbService } from './lib/firebase';
 import {
   Bell,
@@ -374,6 +375,9 @@ export default function App() {
           </div>
         </div>
       )}
+
+      {/* Global Real-time Student Incoming Call Popup (Any teacher screen) */}
+      {!isStudentView && <GlobalPendingCallModal theme={theme} />}
     </div>
   );
 }

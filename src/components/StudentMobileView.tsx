@@ -141,11 +141,19 @@ export const StudentMobileView: React.FC<StudentMobileViewProps> = ({
     const unsub = dbService.subscribeStudents(
       (list) => {
         setTempClassRoster(list);
-        // If current profile name is not in the registered list (e.g. old test student), prompt selection
-        if (list.length > 0 && profile.name) {
-          const match = list.some((s) => s.name === profile.name && s.studentNumber === profile.studentNumber);
-          if (!match && !isEditingProfile) {
-            // Old student profile does not exist in new roster, prompt to pick
+        // If current profile name is not in the registered list (e.g. old test student or new roster imported), prompt selection
+        if (list.length > 0) {
+          if (profile.name) {
+            const match = list.some((s) => s.name === profile.name && s.studentNumber === profile.studentNumber);
+            if (!match) {
+              // Old student profile does not exist in new roster, prompt to pick and clear stale profile
+              setIsEditingProfile(true);
+              setProfile((prev) => ({ ...prev, name: '' }));
+              setTempProfile((prev) => ({ ...prev, name: '' }));
+              localStorage.removeItem(PROFILE_STORAGE_KEY);
+            }
+          } else {
+            // No name set yet, keep editor open so student can pick from roster
             setIsEditingProfile(true);
           }
         }
@@ -154,7 +162,7 @@ export const StudentMobileView: React.FC<StudentMobileViewProps> = ({
       tempProfile.classNum
     );
     return () => unsub();
-  }, [tempProfile.grade, tempProfile.classNum, profile.name, profile.studentNumber, isEditingProfile]);
+  }, [tempProfile.grade, tempProfile.classNum, profile.name, profile.studentNumber]);
 
   // Listen to live URL changes (e.g. scanning QR code while app is in background or foreground)
   useEffect(() => {
@@ -322,10 +330,14 @@ export const StudentMobileView: React.FC<StudentMobileViewProps> = ({
 
     setIsCalling(true);
     try {
+      const studentDisplayName = profile.name
+        ? `${profile.grade}학년 ${profile.classNum}반 ${profile.studentNumber ? profile.studentNumber + '번 ' : ''}${profile.name}`
+        : `${profile.grade}학년 ${profile.classNum}반 방문 학생`;
+
       const callId = await dbService.createCall({
         room: currentRoom,
         teacherName: selectedTeacher.name,
-        studentName: profile.name ? `${profile.grade}-${profile.classNum} ${profile.name}` : '',
+        studentName: studentDisplayName,
         reason: '',
         hasMemo: false,
       });
