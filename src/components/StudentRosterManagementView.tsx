@@ -42,8 +42,8 @@ export const StudentRosterManagementView: React.FC<StudentRosterManagementViewPr
   const isLight = theme === 'vibrant-palette';
 
   const [students, setStudents] = useState<StudentRecord[]>([]);
-  // Default to Grade 1, All Classes (0) so newly imported students across all classes are immediately visible!
-  const [selectedGrade, setSelectedGrade] = useState<number>(1);
+  // Default to All Grades (0), All Classes (0) so all registered students (e.g. 157) are immediately visible!
+  const [selectedGrade, setSelectedGrade] = useState<number>(0);
   const [selectedClass, setSelectedClass] = useState<number>(0);
   const [searchQuery, setSearchQuery] = useState<string>('');
 
@@ -83,6 +83,23 @@ export const StudentRosterManagementView: React.FC<StudentRosterManagementViewPr
     classSummary: { grade: number; classNum: number; count: number }[];
     targetGrade: number;
   } | null>(null);
+
+  // In-app Custom Delete Confirmation Modal State (replaces blocked browser confirm)
+  const [deleteModal, setDeleteModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    description: string;
+    confirmText?: string;
+    isDanger?: boolean;
+    onConfirm: () => Promise<void>;
+  } | null>(null);
+
+  // Floating Toast Notification
+  const [toastMessage, setToastMessage] = useState<{ text: string; isError?: boolean } | null>(null);
+  const showToast = (text: string, isError: boolean = false) => {
+    setToastMessage({ text, isError });
+    setTimeout(() => setToastMessage(null), 3500);
+  };
 
   const [isSimulatorOpen, setIsSimulatorOpen] = useState<boolean>(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -295,24 +312,44 @@ export const StudentRosterManagementView: React.FC<StudentRosterManagementViewPr
     });
   }, [students, selectedGrade, selectedClass, searchQuery]);
 
+  // Dynamic Available Grades and Classes based on data
+  const availableGrades = useMemo(() => {
+    const gradesSet = new Set<number>([1, 2, 3]);
+    students.forEach((s) => {
+      if (s.grade && s.grade > 0) gradesSet.add(s.grade);
+    });
+    return Array.from(gradesSet).sort((a, b) => a - b);
+  }, [students]);
+
+  const availableClasses = useMemo(() => {
+    const classesSet = new Set<number>([1, 2, 3, 4, 5, 6, 7]);
+    students.forEach((s) => {
+      if (selectedGrade === 0 || s.grade === selectedGrade) {
+        if (s.classNum && s.classNum > 0) classesSet.add(s.classNum);
+      }
+    });
+    return Array.from(classesSet).sort((a, b) => a - b);
+  }, [students, selectedGrade]);
+
   // Statistics per grade and class for tabs
   const gradeCounts = useMemo(() => {
     const total = students.length;
-    const g1 = students.filter((s) => s.grade === 1).length;
-    const g2 = students.filter((s) => s.grade === 2).length;
-    const g3 = students.filter((s) => s.grade === 3).length;
-    return { total, g1, g2, g3 };
-  }, [students]);
+    const counts: Record<number, number> = {};
+    availableGrades.forEach((g) => {
+      counts[g] = students.filter((s) => s.grade === g).length;
+    });
+    return { total, counts };
+  }, [students, availableGrades]);
 
   const classCounts = useMemo(() => {
     const counts: Record<number, number> = {};
-    for (let c = 1; c <= 7; c++) {
+    availableClasses.forEach((c) => {
       counts[c] = students.filter(
         (s) => (selectedGrade === 0 || s.grade === selectedGrade) && s.classNum === c
       ).length;
-    }
+    });
     return counts;
-  }, [students, selectedGrade]);
+  }, [students, selectedGrade, availableClasses]);
 
   // -------------------------------------------------------------
   // DRAG AND DROP & EXCEL FILE PROCESSING
@@ -508,22 +545,78 @@ export const StudentRosterManagementView: React.FC<StudentRosterManagementViewPr
     }
   };
 
-  const handleDeleteStudent = async (student: StudentRecord) => {
-    if (!confirm(`${student.grade}학년 ${student.classNum}반 ${student.studentNumber}번 ${student.name} 학생을 명렬에서 삭제하시겠습니까?`)) {
-      return;
-    }
-    try {
-      await dbService.deleteStudent(student.id);
-    } catch (err) {
-      console.error(err);
-      alert('삭제에 실패했습니다.');
-    }
+  const handleDeleteStudent = (student: StudentRecord) => {
+    setDeleteModal({
+      isOpen: true,
+      title: `${student.grade}학년 ${student.classNum}반 ${student.studentNumber}번 ${student.name} 삭제`,
+      description: `정말로 [${student.name}] 학생을 명렬표에서 삭제하시겠습니까?`,
+      confirmText: '학생 삭제',
+      isDanger: true,
+      onConfirm: async () => {
+        try {
+          await dbService.deleteStudent(student.id);
+          showToast(`🗑️ ${student.name} 학생이 삭제되었습니다.`);
+        } catch (err) {
+          console.error(err);
+          showToast('❌ 삭제 처리 중 오류가 발생했습니다.', true);
+        } finally {
+          setDeleteModal(null);
+        }
+      },
+    });
+  };
+
+  const handleClearGrade = (grade: number) => {
+    const count = gradeCounts.counts[grade] || 0;
+    setDeleteModal({
+      isOpen: true,
+      title: `${grade}학년 학생 전체 삭제`,
+      description: `${grade}학년에 등록된 학생 ${count}명을 모두 삭제하시겠습니까?\n(1학년 등 타 학년 학생 데이터는 안전하게 유지됩니다)`,
+      confirmText: `${grade}학년 전체 삭제`,
+      isDanger: true,
+      onConfirm: async () => {
+        try {
+          await dbService.clearGradeStudents(grade);
+          showToast(`🧹 ${grade}학년 학생 ${count}명이 모두 삭제되었습니다.`);
+        } catch (err) {
+          console.error(err);
+          showToast('❌ 학년 삭제 중 오류가 발생했습니다.', true);
+        } finally {
+          setDeleteModal(null);
+        }
+      },
+    });
+  };
+
+  const handleClearSampleGrades = () => {
+    const g2 = gradeCounts.counts[2] || 0;
+    const g3 = gradeCounts.counts[3] || 0;
+    const totalSample = g2 + g3;
+    setDeleteModal({
+      isOpen: true,
+      title: '2~3학년 샘플 학생 일괄 정리',
+      description: `현재 2학년(${g2}명)과 3학년(${g3}명)에 남아있는 샘플 학생 총 ${totalSample}명을 모두 삭제하시겠습니까?\n입력하신 1학년 학생 명렬은 안전하게 그대로 유지됩니다.`,
+      confirmText: '샘플 학생 일괄 삭제',
+      isDanger: true,
+      onConfirm: async () => {
+        try {
+          await dbService.clearGradeStudents(2);
+          await dbService.clearGradeStudents(3);
+          showToast(`🧹 2~3학년 샘플 학생 ${totalSample}명이 깨끗이 정리되었습니다!`);
+        } catch (err) {
+          console.error(err);
+          showToast('❌ 샘플 학생 정리 중 오류가 발생했습니다.', true);
+        } finally {
+          setDeleteModal(null);
+        }
+      },
+    });
   };
 
   // Save Bulk Import & Show Completion Dialog
   const handleSaveBulkImport = async () => {
     if (bulkParsedPreview.length === 0) {
-      alert('등록할 학생 데이터가 없습니다. 엑셀 파일을 드래그앤드롭하거나 복사하여 붙여넣어주세요.');
+      showToast('등록할 학생 데이터가 없습니다. 엑셀 파일을 올려주세요.', true);
       return;
     }
 
@@ -545,9 +638,10 @@ export const StudentRosterManagementView: React.FC<StudentRosterManagementViewPr
 
       setBulkText('');
       setUploadedFileInfo(null);
+      showToast(`🎉 ${bulkParsedPreview.length}명의 학생이 성공적으로 등록되었습니다.`);
     } catch (err) {
       console.error(err);
-      alert('일괄 등록에 실패했습니다. 형식 오류를 확인해주세요.');
+      showToast('일괄 등록에 실패했습니다. 형식 오류를 확인해주세요.', true);
     } finally {
       setIsSubmitting(false);
     }
@@ -556,11 +650,12 @@ export const StudentRosterManagementView: React.FC<StudentRosterManagementViewPr
   // Close Completion Modal and Navigate to List
   const handleAcknowledgeCompletion = () => {
     if (completionResult) {
-      setSelectedGrade(completionResult.targetGrade || 1);
       if (completionResult.classSummary.length === 1) {
+        setSelectedGrade(completionResult.targetGrade || 0);
         setSelectedClass(completionResult.classSummary[0].classNum);
       } else {
-        setSelectedClass(0); // View all classes so user sees everything!
+        setSelectedGrade(0); // View all grades
+        setSelectedClass(0); // View all classes so user sees all students!
       }
     }
     setCompletionResult(null);
@@ -580,15 +675,30 @@ export const StudentRosterManagementView: React.FC<StudentRosterManagementViewPr
     link.download = `학교_학생명렬표_${selectedGrade > 0 ? selectedGrade + '학년_' : '전체_'}${selectedClass > 0 ? selectedClass + '반_' : '전체반_'}${new Date().toISOString().slice(0, 10)}.csv`;
     link.click();
     URL.revokeObjectURL(url);
+    showToast('📥 명렬표 CSV 파일이 다운로드되었습니다.');
   };
 
-  const handleResetDefaults = async () => {
-    if (confirm('기본 샘플 학급 학생 명렬(1~3학년)로 초기화하시겠습니까?')) {
-      await dbService.resetDefaultStudents();
-      setSelectedGrade(1);
-      setSelectedClass(0);
-      alert('기본 학생 명렬로 초기화되었습니다.');
-    }
+  const handleResetDefaults = () => {
+    setDeleteModal({
+      isOpen: true,
+      title: '기본 샘플 학급 명렬 초기화',
+      description: '테스트용 기본 샘플 학생 명렬(1~3학년)로 초기화하시겠습니까? 현재 입력된 명렬이 덮어씌워질 수 있습니다.',
+      confirmText: '기본값 초기화',
+      isDanger: false,
+      onConfirm: async () => {
+        try {
+          await dbService.resetDefaultStudents();
+          setSelectedGrade(0);
+          setSelectedClass(0);
+          showToast('✨ 기본 샘플 학생 명렬로 초기화되었습니다.');
+        } catch (err) {
+          console.error(err);
+          showToast('❌ 초기화 중 오류가 발생했습니다.', true);
+        } finally {
+          setDeleteModal(null);
+        }
+      },
+    });
   };
 
   return (
@@ -1339,8 +1449,8 @@ export const StudentRosterManagementView: React.FC<StudentRosterManagementViewPr
                   {gradeCounts.total}
                 </span>
               </button>
-              {[1, 2, 3].map((g) => {
-                const cnt = g === 1 ? gradeCounts.g1 : g === 2 ? gradeCounts.g2 : gradeCounts.g3;
+              {availableGrades.map((g) => {
+                const cnt = gradeCounts.counts[g] || 0;
                 return (
                   <button
                     key={g}
@@ -1359,6 +1469,32 @@ export const StudentRosterManagementView: React.FC<StudentRosterManagementViewPr
                 );
               })}
             </div>
+
+            {/* Quick 2~3 Grade Sample Cleanup Button */}
+            {((gradeCounts.counts[2] || 0) > 0 || (gradeCounts.counts[3] || 0) > 0) && (
+              <button
+                type="button"
+                onClick={handleClearSampleGrades}
+                className="px-3 py-1.5 rounded-2xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-300 dark:border-amber-700/60 transition cursor-pointer text-xs font-bold flex items-center gap-1.5 shadow-xs"
+                title="2학년과 3학년에 있는 샘플 학생을 한 번에 정리합니다 (1학년 데이터는 안전하게 보존)"
+              >
+                <Trash2 className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+                <span>🧹 2~3학년 샘플 학생 일괄 삭제 ({((gradeCounts.counts[2] || 0) + (gradeCounts.counts[3] || 0))}명)</span>
+              </button>
+            )}
+
+            {/* Selected Grade Full Clear Button */}
+            {selectedGrade > 0 && (gradeCounts.counts[selectedGrade] || 0) > 0 && (
+              <button
+                type="button"
+                onClick={() => handleClearGrade(selectedGrade)}
+                className="px-3 py-1.5 rounded-2xl bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-100 dark:hover:bg-rose-900/60 text-rose-600 dark:text-rose-400 border border-rose-200 dark:border-rose-800 transition cursor-pointer text-xs font-bold flex items-center gap-1.5"
+                title={`${selectedGrade}학년 학생 전체를 삭제합니다`}
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>{selectedGrade}학년 전체 삭제 ({gradeCounts.counts[selectedGrade]}명)</span>
+              </button>
+            )}
           </div>
 
           {/* Search & Download Bar */}
@@ -1417,7 +1553,7 @@ export const StudentRosterManagementView: React.FC<StudentRosterManagementViewPr
             </span>
           </button>
 
-          {Array.from({ length: 7 }, (_, i) => i + 1).map((c) => {
+          {availableClasses.map((c) => {
             const count = classCounts[c] || 0;
             const isSelected = selectedClass === c;
             return (
@@ -1609,6 +1745,66 @@ export const StudentRosterManagementView: React.FC<StudentRosterManagementViewPr
           classNum={placardClass}
           onClose={() => setIsClassPlacardOpen(false)}
         />
+      )}
+
+      {/* In-app Custom Delete Confirmation Dialog (replaces blocked browser confirm) */}
+      {deleteModal && deleteModal.isOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-150">
+          <div className={`w-full max-w-md rounded-3xl p-6 shadow-2xl border ${isLight ? 'bg-white border-slate-200' : 'bg-slate-900 border-slate-800'}`}>
+            <div className="flex items-center gap-3 text-rose-600 mb-3">
+              <div className="p-2.5 rounded-2xl bg-rose-100 dark:bg-rose-950/60 text-rose-600">
+                <Trash2 className="w-5 h-5" />
+              </div>
+              <h3 className="text-base font-black text-slate-900 dark:text-white">
+                {deleteModal.title}
+              </h3>
+            </div>
+
+            <p className="text-xs text-slate-600 dark:text-slate-300 whitespace-pre-line leading-relaxed mb-6">
+              {deleteModal.description}
+            </p>
+
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setDeleteModal(null)}
+                className={`px-4 py-2.5 rounded-xl text-xs font-bold border transition cursor-pointer ${
+                  isLight ? 'border-slate-200 text-slate-600 hover:bg-slate-50' : 'border-slate-700 text-slate-300 hover:bg-slate-800'
+                }`}
+              >
+                취소
+              </button>
+              <button
+                type="button"
+                onClick={deleteModal.onConfirm}
+                className={`px-5 py-2.5 rounded-xl text-xs font-black text-white shadow-md transition cursor-pointer ${
+                  deleteModal.isDanger !== false
+                    ? 'bg-rose-600 hover:bg-rose-700 shadow-rose-600/30'
+                    : 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-600/30'
+                }`}
+              >
+                {deleteModal.confirmText || '확인'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Floating In-App Toast Notification */}
+      {toastMessage && (
+        <div className="fixed bottom-6 right-6 z-50 animate-in slide-in-from-bottom-5 fade-in duration-200">
+          <div
+            className={`px-4 py-3 rounded-2xl shadow-xl border flex items-center gap-2 text-xs font-bold ${
+              toastMessage.isError
+                ? 'bg-rose-600 text-white border-rose-500 shadow-rose-600/30'
+                : isLight
+                ? 'bg-slate-900 text-white border-slate-800 shadow-slate-900/30'
+                : 'bg-indigo-600 text-white border-indigo-500 shadow-indigo-600/30'
+            }`}
+          >
+            <span>{toastMessage.text}</span>
+          </div>
+        </div>
       )}
     </div>
   );

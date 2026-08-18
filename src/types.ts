@@ -114,7 +114,7 @@ export interface StudentAttendance {
   status: 'present' | 'late' | 'excused' | 'absent';
   method: 'wifi' | 'gps' | 'manual';
   note?: string;
-  createdAt: number;
+  createdAt?: number;
 }
 
 // -------------------------------------------------------------
@@ -139,12 +139,12 @@ export interface TeacherWorkNote {
   title: string;
   content: string;
   noteType: WorkNoteType;
-  targetGroups: string[]; // e.g. ['1학년 담임', '기획위원회', '전교직원']
+  targetGroups?: string[]; // e.g. ['1학년 담임', '기획위원회', '전교직원']
   deadline?: string;
   voteOptions?: string[]; // e.g. ['찬성', '반대'] or ['1안', '2안', '3안']
   aggregateFieldLabel?: string; // e.g. '필요 물품 및 수량'
-  responses: Record<string, WorkNoteResponse>; // key: teacherName or '1-3'
-  createdAt: number;
+  responses?: Record<string, WorkNoteResponse>; // key: teacherName or '1-3'
+  createdAt?: number;
 }
 
 export interface StudentProfile {

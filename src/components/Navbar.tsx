@@ -10,7 +10,9 @@ import {
   Sparkles,
   School,
   Sun,
-  Palette
+  Palette,
+  RotateCcw,
+  RefreshCw
 } from 'lucide-react';
 import { playAlertChime } from '../utils/audio';
 import { isFirebaseConfigured } from '../lib/firebase';
@@ -25,6 +27,7 @@ interface NavbarProps {
   onOpenManual?: () => void;
   onOpenQuickQr?: () => void;
   onOpenSimulator?: () => void;
+  onOpenCleanSlateModal?: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -36,6 +39,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenManual,
   onOpenQuickQr,
   onOpenSimulator,
+  onOpenCleanSlateModal,
 }) => {
   const isStudent = currentPath.startsWith('/student');
   const isLight = theme === 'vibrant-palette';
@@ -122,6 +126,23 @@ export const Navbar: React.FC<NavbarProps> = ({
             <Palette className="w-4 h-4 text-indigo-500" />
           </button>
 
+          {/* Clean Slate / Reset Setting Button */}
+          {onOpenCleanSlateModal && (
+            <button
+              id="nav-clean-slate-btn"
+              onClick={onOpenCleanSlateModal}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold border flex items-center gap-1.5 transition cursor-pointer shadow-sm ${
+                isLight
+                  ? 'bg-amber-50 hover:bg-amber-100 text-amber-800 border-amber-200'
+                  : 'bg-amber-950/60 hover:bg-amber-900 text-amber-300 border-amber-700/60'
+              }`}
+              title="새 학년도/새 학교 셋팅을 위해 가짜·샘플 데이터를 0건으로 비우고 원점에서 시작합니다"
+            >
+              <RefreshCw className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+              <span className="font-black">⚙️ 원점 초기화 셋팅</span>
+            </button>
+          )}
+
           {/* Comprehensive Manual Download Button */}
           {onOpenManual && (
             <button
@@ -149,13 +170,13 @@ export const Navbar: React.FC<NavbarProps> = ({
                   ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100 shadow-sm'
                   : 'bg-emerald-950/60 text-emerald-300 border-emerald-700/60 hover:bg-emerald-900'
                 : isLight
-                ? 'bg-amber-50 text-amber-800 border-amber-300 hover:bg-amber-100 animate-pulse shadow-sm'
-                : 'bg-amber-950/60 text-amber-300 border-amber-700/60 hover:bg-amber-900 animate-pulse'
+                ? 'bg-indigo-50 text-indigo-700 border-indigo-200 hover:bg-indigo-100 shadow-sm'
+                : 'bg-indigo-950/60 text-indigo-300 border-indigo-700/60 hover:bg-indigo-900'
             }`}
           >
             <Database className="w-3.5 h-3.5" />
             <span className="hidden md:inline">
-              {isFirebaseConfigured ? 'Firebase 연결됨' : 'Firebase 가이드 (.env)'}
+              {isFirebaseConfigured ? 'Firebase 연결됨' : '실시간 동기화 서버 가동중'}
             </span>
           </button>
         </div>

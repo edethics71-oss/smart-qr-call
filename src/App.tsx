@@ -10,6 +10,7 @@ import { StudentMobileView } from './components/StudentMobileView';
 import { FirebaseGuideModal } from './components/FirebaseGuideModal';
 import { PrintablePlacardModal } from './components/PrintablePlacardModal';
 import { ManualDownloadModal } from './components/ManualDownloadModal';
+import { CleanSlateResetModal } from './components/CleanSlateResetModal';
 import { dbService } from './lib/firebase';
 import {
   Bell,
@@ -82,7 +83,14 @@ export default function App() {
   // Modals
   const [isFirebaseGuideOpen, setIsFirebaseGuideOpen] = useState<boolean>(false);
   const [isManualModalOpen, setIsManualModalOpen] = useState<boolean>(false);
+  const [isCleanSlateModalOpen, setIsCleanSlateModalOpen] = useState<boolean>(false);
   const [placardRoom, setPlacardRoom] = useState<string | null>(null);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  const showToast = (msg: string) => {
+    setToastMessage(msg);
+    setTimeout(() => setToastMessage(null), 4000);
+  };
 
   // Subscribe to all teachers
   useEffect(() => {
@@ -140,6 +148,7 @@ export default function App() {
           onToggleTheme={toggleTheme}
           onOpenFirebaseGuide={() => setIsFirebaseGuideOpen(true)}
           onOpenManual={() => setIsManualModalOpen(true)}
+          onOpenCleanSlateModal={() => setIsCleanSlateModalOpen(true)}
         />
       )}
 
@@ -344,6 +353,26 @@ export default function App() {
       {/* Comprehensive Manual Download & Viewer Modal */}
       {isManualModalOpen && (
         <ManualDownloadModal theme={theme} onClose={() => setIsManualModalOpen(false)} />
+      )}
+
+      {/* Clean Slate Reset Modal */}
+      {isCleanSlateModalOpen && (
+        <CleanSlateResetModal
+          isOpen={isCleanSlateModalOpen}
+          theme={theme}
+          onClose={() => setIsCleanSlateModalOpen(false)}
+          onSuccessToast={(msg) => showToast(msg)}
+        />
+      )}
+
+      {/* Global Toast Notification */}
+      {toastMessage && (
+        <div className="fixed bottom-6 right-6 z-50 animate-in fade-in slide-in-from-bottom-5 duration-300 max-w-md">
+          <div className="bg-slate-900 text-white px-5 py-3.5 rounded-2xl shadow-2xl border border-slate-700 flex items-center gap-3 text-xs sm:text-sm font-bold">
+            <span className="text-base">✨</span>
+            <span>{toastMessage}</span>
+          </div>
+        </div>
       )}
     </div>
   );

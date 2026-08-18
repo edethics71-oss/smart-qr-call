@@ -105,6 +105,16 @@ export const TeacherManagementView: React.FC<TeacherManagementViewProps> = ({
   const [importSuccessMsg, setImportSuccessMsg] = useState<string>('');
   const [isDragging, setIsDragging] = useState<boolean>(false);
 
+  // Delete & Clear All Modal State
+  const [teacherToDelete, setTeacherToDelete] = useState<{ id: string; name: string } | null>(null);
+  const [isClearAllModalOpen, setIsClearAllModalOpen] = useState<boolean>(false);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  const showToast = (msg: string) => {
+    setToastMessage(msg);
+    setTimeout(() => setToastMessage(null), 4000);
+  };
+
   // Single Add / Edit Teacher state
   const [editingTeacherId, setEditingTeacherId] = useState<string | null>(null);
   const [name, setName] = useState('');
@@ -451,21 +461,36 @@ export const TeacherManagementView: React.FC<TeacherManagementViewProps> = ({
     }
   };
 
-  const handleDeleteTeacher = async (id: string, teacherName: string) => {
-    if (window.confirm(`정말로 [${teacherName}] 선생님을 명단에서 삭제하시겠습니까?`)) {
-      await dbService.deleteTeacher(id);
+  const handleDeleteTeacher = (id: string, teacherName: string) => {
+    setTeacherToDelete({ id, name: teacherName });
+  };
+
+  const confirmDeleteTeacher = async () => {
+    if (!teacherToDelete) return;
+    try {
+      await dbService.deleteTeacher(teacherToDelete.id);
+      showToast(`🗑️ [${teacherToDelete.name}] 선생님을 명단에서 삭제했습니다.`);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setTeacherToDelete(null);
+    }
+  };
+
+  const handleClearAllTeachers = async () => {
+    try {
+      await dbService.clearAllTeachers();
+      showToast('🧹 교직원 명단 전체를 0명으로 원점 초기화했습니다.');
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsClearAllModalOpen(false);
     }
   };
 
   const handleResetToDefault = async () => {
-    if (
-      window.confirm(
-        '모든 교직원 명단을 기본 표준 샘플 명단(8명, 위원회·교과 포함)으로 초기화하시겠습니까?'
-      )
-    ) {
-      await dbService.resetTeachersToDefault();
-      alert('기본 샘플 교직원 명단으로 복원되었습니다.');
-    }
+    await dbService.resetTeachersToDefault();
+    showToast('🔄 기본 샘플 교직원 명단으로 복원되었습니다.');
   };
 
   const handleCopyLink = () => {
@@ -519,6 +544,16 @@ export const TeacherManagementView: React.FC<TeacherManagementViewProps> = ({
           >
             <Download className="w-3.5 h-3.5 text-indigo-600" />
             <span>현재 명단 엑셀 내보내기</span>
+          </button>
+
+          {/* Clear All Teachers */}
+          <button
+            onClick={() => setIsClearAllModalOpen(true)}
+            className="px-3 py-2.5 rounded-2xl border border-rose-200 dark:border-rose-900/60 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 font-bold text-xs flex items-center gap-1.5 cursor-pointer transition"
+            title="교직원 명단을 0명으로 완전히 비우고 실제 우리 학교 명단으로 새로 등록"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+            <span>🧹 명단 전체 비우기 (0명)</span>
           </button>
 
           {/* Reset to Default */}
@@ -1578,6 +1613,96 @@ export const TeacherManagementView: React.FC<TeacherManagementViewProps> = ({
           )}
         </div>
       </div>
+
+      {/* Delete Single Teacher Modal */}
+      {teacherToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-xs animate-in fade-in duration-150">
+          <div
+            className={`w-full max-w-md rounded-3xl p-6 shadow-2xl border ${
+              isLight ? 'bg-white border-slate-200' : 'bg-slate-900 border-slate-800 text-white'
+            }`}
+          >
+            <div className="flex items-center gap-3 pb-3 border-b border-slate-200 dark:border-slate-800">
+              <div className="p-2 rounded-2xl bg-rose-100 dark:bg-rose-950 text-rose-600 dark:text-rose-400">
+                <Trash2 className="w-5 h-5" />
+              </div>
+              <h3 className="font-black text-base text-slate-900 dark:text-white">교직원 삭제 확인</h3>
+            </div>
+            <p className="text-xs text-slate-600 dark:text-slate-300 mt-4 leading-relaxed">
+              정말로 <strong>[{teacherToDelete.name}]</strong> 선생님을 교직원 명단에서 삭제하시겠습니까?
+            </p>
+            <div className="flex justify-end gap-2 mt-6">
+              <button
+                type="button"
+                onClick={() => setTeacherToDelete(null)}
+                className={`px-4 py-2 rounded-xl text-xs font-bold border ${
+                  isLight ? 'border-slate-200 text-slate-600 hover:bg-slate-50' : 'border-slate-700 text-slate-300 hover:bg-slate-800'
+                }`}
+              >
+                취소
+              </button>
+              <button
+                type="button"
+                onClick={confirmDeleteTeacher}
+                className="px-4 py-2 rounded-xl text-xs font-black text-white bg-rose-600 hover:bg-rose-700 shadow-md shadow-rose-600/30"
+              >
+                삭제하기
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Clear All Teachers Modal */}
+      {isClearAllModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-xs animate-in fade-in duration-150">
+          <div
+            className={`w-full max-w-md rounded-3xl p-6 shadow-2xl border ${
+              isLight ? 'bg-white border-slate-200' : 'bg-slate-900 border-slate-800 text-white'
+            }`}
+          >
+            <div className="flex items-center gap-3 pb-3 border-b border-slate-200 dark:border-slate-800">
+              <div className="p-2 rounded-2xl bg-rose-100 dark:bg-rose-950 text-rose-600 dark:text-rose-400">
+                <Trash2 className="w-5 h-5" />
+              </div>
+              <h3 className="font-black text-base text-slate-900 dark:text-white">교직원 명단 전체 비우기</h3>
+            </div>
+            <p className="text-xs text-slate-600 dark:text-slate-300 mt-4 leading-relaxed">
+              등록된 모든 교직원({teachers.length}명) 명단을 <strong>0명으로 완전히 비우시겠습니까?</strong>
+              <br />
+              비운 후 우리 학교 실제 교직원 엑셀 파일을 드래그하여 바로 새로 등록하실 수 있습니다.
+            </p>
+            <div className="flex justify-end gap-2 mt-6">
+              <button
+                type="button"
+                onClick={() => setIsClearAllModalOpen(false)}
+                className={`px-4 py-2 rounded-xl text-xs font-bold border ${
+                  isLight ? 'border-slate-200 text-slate-600 hover:bg-slate-50' : 'border-slate-700 text-slate-300 hover:bg-slate-800'
+                }`}
+              >
+                취소
+              </button>
+              <button
+                type="button"
+                onClick={handleClearAllTeachers}
+                className="px-4 py-2 rounded-xl text-xs font-black text-white bg-rose-600 hover:bg-rose-700 shadow-md shadow-rose-600/30"
+              >
+                전체 비우기
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Toast */}
+      {toastMessage && (
+        <div className="fixed bottom-6 right-6 z-50 animate-in fade-in slide-in-from-bottom-5 duration-300 max-w-md">
+          <div className="bg-slate-900 text-white px-5 py-3 rounded-2xl shadow-2xl border border-slate-700 flex items-center gap-3 text-xs font-bold">
+            <span>✨</span>
+            <span>{toastMessage}</span>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
