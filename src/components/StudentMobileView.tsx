@@ -101,7 +101,7 @@ export const StudentMobileView: React.FC<StudentMobileViewProps> = ({
         }
       }
 
-      // 1. Direct login with full student details in URL
+      // 1. Direct login with full student details in URL (개인 전용 QR)
       if (paramName && paramGrade && paramClass) {
         const autoProfile = {
           grade: paramGrade,
@@ -113,31 +113,48 @@ export const StudentMobileView: React.FC<StudentMobileViewProps> = ({
         return autoProfile;
       }
 
-      // 2. Class QR scan (?grade=1&class=3 or ?grade=1&classNum=3)
+      // 2. Class QR scan (?grade=1&class=1 or ?grade=1&classNum=1)
       if (paramGrade && paramClass) {
-        if (parsedSaved) {
-          const updatedProfile = {
-            ...parsedSaved,
-            grade: paramGrade,
-            classNum: paramClass,
-          };
-          localStorage.setItem(PROFILE_STORAGE_KEY, JSON.stringify(updatedProfile));
-          return updatedProfile;
+        if (parsedSaved && parsedSaved.grade === paramGrade && parsedSaved.classNum === paramClass && parsedSaved.name) {
+          return parsedSaved;
         } else {
-          return { grade: paramGrade, classNum: paramClass, studentNumber: 1, name: '' };
+          // If class QR is scanned and saved profile is from different class or empty, reset name so student picks themselves
+          const newProfile = { grade: paramGrade, classNum: paramClass, studentNumber: 1, name: '' };
+          localStorage.setItem(PROFILE_STORAGE_KEY, JSON.stringify(newProfile));
+          return newProfile;
         }
       }
 
-      if (parsedSaved) {
+      if (parsedSaved && parsedSaved.name) {
         return parsedSaved;
       }
     }
-    return { grade: 1, classNum: 3, studentNumber: 1, name: '홍길동' };
+    return { grade: 1, classNum: 1, studentNumber: 1, name: '' };
   });
 
   const [isEditingProfile, setIsEditingProfile] = useState(() => !profile.name.trim());
   const [tempProfile, setTempProfile] = useState<StudentProfile>(profile);
   const [tempClassRoster, setTempClassRoster] = useState<StudentRecord[]>([]);
+
+  // Always subscribe to student roster for current grade/class to validate and provide easy selection
+  useEffect(() => {
+    const unsub = dbService.subscribeStudents(
+      (list) => {
+        setTempClassRoster(list);
+        // If current profile name is not in the registered list (e.g. old test student), prompt selection
+        if (list.length > 0 && profile.name) {
+          const match = list.some((s) => s.name === profile.name && s.studentNumber === profile.studentNumber);
+          if (!match && !isEditingProfile) {
+            // Old student profile does not exist in new roster, prompt to pick
+            setIsEditingProfile(true);
+          }
+        }
+      },
+      tempProfile.grade,
+      tempProfile.classNum
+    );
+    return () => unsub();
+  }, [tempProfile.grade, tempProfile.classNum, profile.name, profile.studentNumber, isEditingProfile]);
 
   // Listen to live URL changes (e.g. scanning QR code while app is in background or foreground)
   useEffect(() => {
@@ -160,6 +177,9 @@ export const StudentMobileView: React.FC<StudentMobileViewProps> = ({
         setTempProfile(autoProfile);
         localStorage.setItem(PROFILE_STORAGE_KEY, JSON.stringify(autoProfile));
         setIsEditingProfile(false);
+      } else if (paramGrade && paramClass) {
+        setTempProfile((prev) => ({ ...prev, grade: paramGrade, classNum: paramClass, name: '' }));
+        setIsEditingProfile(true);
       }
     };
 
@@ -171,24 +191,11 @@ export const StudentMobileView: React.FC<StudentMobileViewProps> = ({
     };
   }, []);
 
-  // Subscribe to students for selected grade/class in profile editor
-  useEffect(() => {
-    if (!isEditingProfile) return;
-    const unsub = dbService.subscribeStudents(
-      (list) => {
-        setTempClassRoster(list);
-      },
-      tempProfile.grade,
-      tempProfile.classNum
-    );
-    return () => unsub();
-  }, [isEditingProfile, tempProfile.grade, tempProfile.classNum]);
-
   // Save student profile
   const handleSaveProfile = (e: React.FormEvent) => {
     e.preventDefault();
     if (!tempProfile.name.trim()) {
-      alert('학생 성명을 입력해주세요.');
+      alert('학생 성명을 입력하거나 명렬표에서 본인 이름을 선택해주세요.');
       return;
     }
     setProfile(tempProfile);
@@ -196,13 +203,56 @@ export const StudentMobileView: React.FC<StudentMobileViewProps> = ({
     setIsEditingProfile(false);
   };
 
+  const handleSelectStudentFromRoster = (std: StudentRecord) => {
+    const selected: StudentProfile = {
+      grade: std.grade,
+      classNum: std.classNum,
+      studentNumber: std.studentNumber,
+      name: std.name,
+    };
+    setProfile(selected);
+    setTempProfile(selected);
+    localStorage.setItem(PROFILE_STORAGE_KEY, JSON.stringify(selected));
+    setIsEditingProfile(false);
+  };
+
+  const handleResetStudentProfile = () => {
+    const resetProf: StudentProfile = {
+      grade: profile.grade || 1,
+      classNum: profile.classNum || 1,
+      studentNumber: 1,
+      name: '',
+    };
+    setProfile(resetProf);
+    setTempProfile(resetProf);
+    localStorage.removeItem(PROFILE_STORAGE_KEY);
+    setIsEditingProfile(true);
+  };
+
   // -------------------------------------------------------------
   // TAB 1: TEACHER VISIT & CALLING (교무실 앞 방문)
   // -------------------------------------------------------------
-  const [currentRoom, setCurrentRoom] = useState<string>(initialRoom || '본관 1교무실');
+  const [currentRoom, setCurrentRoom] = useState<string>(initialRoom || '');
   const [teachers, setTeachers] = useState<Teacher[]>([]);
   const [selectedTeacher, setSelectedTeacher] = useState<Teacher | null>(null);
   const [teacherSearch, setTeacherSearch] = useState('');
+
+  // Distinct rooms from actual teachers
+  const [allRooms, setAllRooms] = useState<string[]>([]);
+  useEffect(() => {
+    const unsubscribe = dbService.subscribeTeachers((all) => {
+      const roomsSet = new Set<string>();
+      all.forEach((t) => {
+        if (t.room && t.room.trim()) roomsSet.add(t.room.trim());
+      });
+      const roomList = Array.from(roomsSet);
+      setAllRooms(roomList);
+      if (roomList.length > 0 && (!currentRoom || !roomList.includes(currentRoom))) {
+        setCurrentRoom(roomList[0]);
+      }
+    });
+    return () => unsubscribe();
+  }, [currentRoom]);
 
   // Active visit call tracking state
   const [activeCallId, setActiveCallId] = useState<string | null>(null);
@@ -253,19 +303,6 @@ export const StudentMobileView: React.FC<StudentMobileViewProps> = ({
 
     return () => unsubscribe();
   }, [activeCallId]);
-
-  // Distinct rooms
-  const [allRooms, setAllRooms] = useState<string[]>(['본관 1교무실', '2학년 연구실', '진로진학상담실']);
-  useEffect(() => {
-    const unsubscribe = dbService.subscribeTeachers((all) => {
-      const set = new Set<string>(['본관 1교무실', '2학년 연구실', '진로진학상담실']);
-      all.forEach((t) => {
-        if (t.room) set.add(t.room);
-      });
-      setAllRooms(Array.from(set));
-    });
-    return () => unsubscribe();
-  }, []);
 
   const filteredTeachers = useMemo(() => {
     if (!teacherSearch.trim()) return teachers;
@@ -567,156 +604,190 @@ export const StudentMobileView: React.FC<StudentMobileViewProps> = ({
             </div>
           </div>
 
-          <button
-            onClick={() => {
-              setTempProfile(profile);
-              setIsEditingProfile(!isEditingProfile);
-            }}
-            className={`text-xs px-2.5 py-1.5 rounded-xl font-bold border transition flex items-center gap-1 cursor-pointer ${
-              isLight
-                ? 'bg-indigo-50 border-indigo-200 text-indigo-700 hover:bg-indigo-100'
-                : 'bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700'
-            }`}
-          >
-            <User className="w-3.5 h-3.5" />
-            <span>{profile.grade}-{profile.classNum} {profile.name}</span>
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => {
+                setTempProfile(profile);
+                setIsEditingProfile(!isEditingProfile);
+              }}
+              className={`text-xs px-3 py-1.5 rounded-xl font-bold border transition flex items-center gap-1.5 cursor-pointer shadow-xs ${
+                profile.name
+                  ? isLight
+                    ? 'bg-indigo-50 border-indigo-200 text-indigo-700 hover:bg-indigo-100'
+                    : 'bg-slate-800 border-slate-700 text-slate-200 hover:bg-slate-700'
+                  : 'bg-rose-500 text-white border-rose-600 animate-pulse'
+              }`}
+            >
+              <User className="w-3.5 h-3.5" />
+              <span>
+                {profile.name
+                  ? `${profile.grade}-${profile.classNum} ${profile.studentNumber}번 ${profile.name}`
+                  : '⚠️ 학생 선택 필요'}
+              </span>
+            </button>
+
+            {profile.name && (
+              <button
+                onClick={handleResetStudentProfile}
+                title="학생 정보 변경 / 다시 선택"
+                className={`p-1.5 rounded-xl border transition cursor-pointer text-[10px] ${
+                  isLight
+                    ? 'bg-slate-100 border-slate-200 text-slate-600 hover:bg-slate-200'
+                    : 'bg-slate-800 border-slate-700 text-slate-400 hover:bg-slate-700'
+                }`}
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Profile Editor Collapse */}
         {isEditingProfile && (
-          <form
-            onSubmit={handleSaveProfile}
-            className={`mt-3 pt-3 border-t text-left text-xs space-y-3 ${
+          <div
+            className={`mt-3 pt-3 border-t text-left text-xs space-y-3 animate-in fade-in ${
               isLight ? 'border-indigo-100' : 'border-slate-800'
             }`}
           >
-            <div className="font-bold text-slate-600 dark:text-slate-400 flex items-center justify-between">
-              <span>내 정보 설정 (최초 1회 저장)</span>
-              <span className="text-[10px] text-indigo-600">브라우저에 자동 기억</span>
+            <div className="font-bold text-slate-700 dark:text-slate-300 flex items-center justify-between">
+              <span className="flex items-center gap-1.5">
+                <Sparkles className="w-4 h-4 text-indigo-600" />
+                <strong>학생 본인 선택 (최초 1회 등록)</strong>
+              </span>
+              <span className="text-[10px] text-indigo-600 dark:text-indigo-400">스마트폰에 자동 기억됨</span>
             </div>
 
-            <div className="grid grid-cols-3 gap-2">
-              <div>
-                <div className="flex items-center justify-between mb-1">
-                  <label className="block text-[10px] font-bold text-slate-500">학년</label>
+            {/* Quick 1-Tap Student Selection from Registered Roster */}
+            {tempClassRoster.length > 0 ? (
+              <div className="p-3 rounded-2xl bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-black text-indigo-900 dark:text-indigo-200">
+                    👇 {tempProfile.grade}학년 {tempProfile.classNum}반 명렬표에서 본인 이름을 터치하세요:
+                  </span>
+                  <span className="text-[10px] text-slate-500 font-bold">
+                    총 {tempClassRoster.length}명
+                  </span>
                 </div>
-                <select
-                  value={tempProfile.grade}
-                  onChange={(e) => setTempProfile({ ...tempProfile, grade: Number(e.target.value) })}
-                  className={`w-full p-2.5 rounded-xl border text-xs font-bold ${
-                    isLight
-                      ? 'bg-indigo-50/50 border-indigo-200 text-slate-900'
-                      : 'bg-slate-800 border-slate-700 text-white'
-                  }`}
-                >
-                  <option value={1}>1학년</option>
-                  <option value={2}>2학년</option>
-                  <option value={3}>3학년</option>
-                </select>
-              </div>
-
-              <div>
-                <div className="flex items-center justify-between mb-1">
-                  <label className="block text-[10px] font-bold text-slate-500">학급(반)</label>
-                </div>
-                <select
-                  value={tempProfile.classNum}
-                  onChange={(e) => setTempProfile({ ...tempProfile, classNum: Number(e.target.value) })}
-                  className={`w-full p-2.5 rounded-xl border text-xs font-bold ${
-                    isLight
-                      ? 'bg-indigo-50/50 border-indigo-200 text-slate-900'
-                      : 'bg-slate-800 border-slate-700 text-white'
-                  }`}
-                >
-                  {Array.from({ length: 7 }, (_, i) => i + 1).map((c) => (
-                    <option key={c} value={c}>
-                      {c}반
-                    </option>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5 max-h-48 overflow-y-auto p-1 bg-white/60 dark:bg-slate-900/60 rounded-xl border border-indigo-100 dark:border-indigo-900">
+                  {tempClassRoster.map((std) => (
+                    <button
+                      key={std.id}
+                      type="button"
+                      onClick={() => handleSelectStudentFromRoster(std)}
+                      className={`p-2 rounded-xl border text-xs font-black transition cursor-pointer text-left flex items-center justify-between ${
+                        profile.name === std.name && profile.studentNumber === std.studentNumber && profile.classNum === std.classNum
+                          ? 'bg-indigo-600 text-white border-indigo-600 shadow-md shadow-indigo-600/30'
+                          : isLight
+                          ? 'bg-white text-slate-800 border-slate-200 hover:border-indigo-400 hover:bg-indigo-50/50'
+                          : 'bg-slate-800 text-slate-200 border-slate-700 hover:border-indigo-500 hover:bg-slate-700'
+                      }`}
+                    >
+                      <span>{std.studentNumber}번 {std.name}</span>
+                      {profile.name === std.name && profile.studentNumber === std.studentNumber && (
+                        <Check className="w-3.5 h-3.5 text-white" />
+                      )}
+                    </button>
                   ))}
-                </select>
+                </div>
+                <p className="text-[10px] text-slate-500 dark:text-slate-400">
+                  💡 본인 이름을 터치하면 즉시 설정되어 출결, 공지사항, 교무실 방문이 가능합니다.
+                </p>
+              </div>
+            ) : (
+              <div className="p-3 rounded-2xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/50 text-[11px] text-amber-800 dark:text-amber-300">
+                ⚠️ {tempProfile.grade}학년 {tempProfile.classNum}반에 아직 등록된 학생 명렬표가 없습니다. 아래에서 직접 학년, 반, 번호, 성명을 입력하실 수 있습니다.
+              </div>
+            )}
+
+            {/* Manual Form Entry (Optional fallback) */}
+            <form onSubmit={handleSaveProfile} className="space-y-2.5 pt-1">
+              <div className="grid grid-cols-3 gap-2">
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-500 mb-1">학년</label>
+                  <select
+                    value={tempProfile.grade}
+                    onChange={(e) => setTempProfile({ ...tempProfile, grade: Number(e.target.value) })}
+                    className={`w-full p-2 rounded-xl border text-xs font-bold ${
+                      isLight
+                        ? 'bg-indigo-50/50 border-indigo-200 text-slate-900'
+                        : 'bg-slate-800 border-slate-700 text-white'
+                    }`}
+                  >
+                    <option value={1}>1학년</option>
+                    <option value={2}>2학년</option>
+                    <option value={3}>3학년</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-500 mb-1">학급(반)</label>
+                  <select
+                    value={tempProfile.classNum}
+                    onChange={(e) => setTempProfile({ ...tempProfile, classNum: Number(e.target.value) })}
+                    className={`w-full p-2 rounded-xl border text-xs font-bold ${
+                      isLight
+                        ? 'bg-indigo-50/50 border-indigo-200 text-slate-900'
+                        : 'bg-slate-800 border-slate-700 text-white'
+                    }`}
+                  >
+                    {Array.from({ length: 7 }, (_, i) => i + 1).map((c) => (
+                      <option key={c} value={c}>
+                        {c}반
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-500 mb-1">출석번호</label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={45}
+                    value={tempProfile.studentNumber}
+                    onChange={(e) => setTempProfile({ ...tempProfile, studentNumber: Number(e.target.value) })}
+                    className={`w-full p-2 rounded-xl border text-xs font-bold focus:ring-2 focus:ring-indigo-500 outline-none ${
+                      isLight ? 'bg-indigo-50/50 border-indigo-200 text-slate-900' : 'bg-slate-800 border-slate-700 text-white'
+                    }`}
+                  />
+                </div>
               </div>
 
               <div>
-                <label className="block text-[10px] font-bold text-slate-500 mb-1">출석번호</label>
+                <label className="block text-[10px] font-bold text-slate-500 mb-1">학생 성명 직접 입력</label>
                 <input
-                  type="number"
-                  min={1}
-                  max={45}
-                  value={tempProfile.studentNumber}
-                  onChange={(e) => setTempProfile({ ...tempProfile, studentNumber: Number(e.target.value) })}
+                  type="text"
+                  required
+                  value={tempProfile.name}
+                  onChange={(e) => setTempProfile({ ...tempProfile, name: e.target.value })}
+                  placeholder="예: 김민수"
                   className={`w-full p-2.5 rounded-xl border text-xs font-bold focus:ring-2 focus:ring-indigo-500 outline-none ${
                     isLight ? 'bg-indigo-50/50 border-indigo-200 text-slate-900' : 'bg-slate-800 border-slate-700 text-white'
                   }`}
                 />
               </div>
-            </div>
 
-            <div>
-              <label className="block text-[10px] font-bold text-slate-500 mb-1">학생 성명</label>
-              <input
-                type="text"
-                required
-                value={tempProfile.name}
-                onChange={(e) => setTempProfile({ ...tempProfile, name: e.target.value })}
-                placeholder="예: 홍길동"
-                className={`w-full p-2.5 rounded-xl border text-xs font-bold focus:ring-2 focus:ring-indigo-500 outline-none ${
-                  isLight ? 'bg-indigo-50/50 border-indigo-200 text-slate-900' : 'bg-slate-800 border-slate-700 text-white'
-                }`}
-              />
-            </div>
-
-            {/* Quick Student Selection from Registered Roster */}
-            {tempClassRoster.length > 0 && (
-              <div className="p-2.5 rounded-xl bg-indigo-50/50 dark:bg-indigo-950/30 border border-indigo-100 dark:border-indigo-900/50 space-y-1.5">
-                <span className="block text-[10px] font-bold text-indigo-700 dark:text-indigo-300">
-                  👆 {tempProfile.grade}학년 {tempProfile.classNum}반 명렬표에서 본인 이름 터치:
-                </span>
-                <div className="flex flex-wrap gap-1 max-h-24 overflow-y-auto pr-1">
-                  {tempClassRoster.map((std) => (
-                    <button
-                      key={std.id}
-                      type="button"
-                      onClick={() => {
-                        setTempProfile({
-                          ...tempProfile,
-                          studentNumber: std.studentNumber,
-                          name: std.name,
-                        });
-                      }}
-                      className={`text-[11px] px-2 py-0.5 rounded-lg border font-bold transition cursor-pointer ${
-                        tempProfile.name === std.name && tempProfile.studentNumber === std.studentNumber
-                          ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs'
-                          : isLight
-                          ? 'bg-white text-slate-700 border-indigo-100 hover:bg-indigo-50'
-                          : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700'
-                      }`}
-                    >
-                      {std.studentNumber}번 {std.name}
-                    </button>
-                  ))}
-                </div>
+              <div className="flex gap-2 pt-1">
+                <button
+                  type="submit"
+                  className="flex-1 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-black cursor-pointer shadow-md transition"
+                >
+                  직접 입력값으로 저장
+                </button>
+                {profile.name && (
+                  <button
+                    type="button"
+                    onClick={() => setIsEditingProfile(false)}
+                    className={`px-4 py-2.5 rounded-xl font-bold border ${
+                      isLight ? 'border-slate-200 text-slate-600 hover:bg-slate-50' : 'border-slate-700 text-slate-400 hover:bg-slate-800'
+                    }`}
+                  >
+                    닫기
+                  </button>
+                )}
               </div>
-            )}
-
-            <div className="flex gap-2">
-              <button
-                type="submit"
-                className="flex-1 py-2 rounded-xl bg-indigo-600 text-white font-bold cursor-pointer"
-              >
-                저장 완료
-              </button>
-              <button
-                type="button"
-                onClick={() => setIsEditingProfile(false)}
-                className={`px-3 py-2 rounded-xl font-bold border ${
-                  isLight ? 'border-slate-200 text-slate-600' : 'border-slate-700 text-slate-400'
-                }`}
-              >
-                닫기
-              </button>
-            </div>
-          </form>
+            </form>
+          </div>
         )}
       </div>
 
@@ -858,33 +929,40 @@ export const StudentMobileView: React.FC<StudentMobileViewProps> = ({
                   />
                 </div>
 
-                <div className="grid grid-cols-2 gap-2 max-h-56 overflow-y-auto pr-1">
-                  {filteredTeachers.map((t) => {
-                    const isSelected = selectedTeacher?.id === t.id;
-                    return (
-                      <button
-                        key={t.id}
-                        type="button"
-                        onClick={() => setSelectedTeacher(t)}
-                        className={`p-3 rounded-2xl border text-left transition flex items-center justify-between cursor-pointer ${
-                          isSelected
-                            ? 'bg-indigo-600 border-indigo-600 text-white shadow-md shadow-indigo-600/30'
-                            : isLight
-                            ? 'bg-slate-50 border-slate-200 hover:border-indigo-300 text-slate-800'
-                            : 'bg-slate-800 border-slate-700 hover:border-slate-600 text-slate-200'
-                        }`}
-                      >
-                        <div>
-                          <div className="font-black text-xs">{t.name} 선생님</div>
-                          <div className={`text-[10px] ${isSelected ? 'text-indigo-100' : 'text-slate-400'}`}>
-                            {t.subject || '교과'}
+                {filteredTeachers.length > 0 ? (
+                  <div className="grid grid-cols-2 gap-2 max-h-56 overflow-y-auto pr-1">
+                    {filteredTeachers.map((t) => {
+                      const isSelected = selectedTeacher?.id === t.id;
+                      return (
+                        <button
+                          key={t.id}
+                          type="button"
+                          onClick={() => setSelectedTeacher(t)}
+                          className={`p-3 rounded-2xl border text-left transition flex items-center justify-between cursor-pointer ${
+                            isSelected
+                              ? 'bg-indigo-600 border-indigo-600 text-white shadow-md shadow-indigo-600/30'
+                              : isLight
+                              ? 'bg-slate-50 border-slate-200 hover:border-indigo-300 text-slate-800'
+                              : 'bg-slate-800 border-slate-700 hover:border-slate-600 text-slate-200'
+                          }`}
+                        >
+                          <div>
+                            <div className="font-black text-xs">{t.name} 선생님</div>
+                            <div className={`text-[10px] ${isSelected ? 'text-indigo-100' : 'text-slate-400'}`}>
+                              {t.subject || '교과'}
+                            </div>
                           </div>
-                        </div>
-                        {isSelected && <Check className="w-4 h-4 text-white" />}
-                      </button>
-                    );
-                  })}
-                </div>
+                          {isSelected && <Check className="w-4 h-4 text-white" />}
+                        </button>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 text-center text-xs text-slate-500 space-y-1">
+                    <p className="font-bold">등록된 선생님이 없습니다.</p>
+                    <p className="text-[11px] text-slate-400">교무 관리자 화면에서 교직원 명단을 등록해주세요.</p>
+                  </div>
+                )}
               </div>
 
               {/* Call Action Button */}

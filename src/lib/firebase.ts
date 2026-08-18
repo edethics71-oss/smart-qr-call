@@ -1032,5 +1032,8 @@ export const dbService = {
     saveLocal(STORAGE_NOTICES_KEY, []);
     saveLocal(STORAGE_ATTENDANCE_KEY, []);
     saveLocal(STORAGE_WORK_NOTES_KEY, []);
+    try {
+      localStorage.removeItem('edu_student_profile_v1');
+    } catch {}
   },
 };
