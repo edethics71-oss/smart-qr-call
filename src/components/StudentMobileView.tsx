@@ -151,33 +151,21 @@ export const StudentMobileView: React.FC<StudentMobileViewProps> = ({
     }
   };
 
-  // Always subscribe to student roster for current grade/class to validate and provide easy selection
+  // Always subscribe to student roster for current grade/class to provide easy selection if roster exists
   useEffect(() => {
     const unsub = dbService.subscribeStudents(
       (list) => {
         setTempClassRoster(list);
-        // If current profile name is not in the registered list (e.g. old test student or new roster imported), prompt selection
-        if (list.length > 0) {
-          if (profile.name) {
-            const match = list.some((s) => s.name === profile.name && s.studentNumber === profile.studentNumber);
-            if (!match) {
-              // Old student profile does not exist in new roster, prompt to pick and clear stale profile
-              setIsEditingProfile(true);
-              setProfile((prev) => ({ ...prev, name: '' }));
-              setTempProfile((prev) => ({ ...prev, name: '' }));
-              localStorage.removeItem(PROFILE_STORAGE_KEY);
-            }
-          } else {
-            // No name set yet, keep editor open so student can pick from roster
-            setIsEditingProfile(true);
-          }
+        // Do not delete student profile even if not yet in roster, but keep editor open if name is empty
+        if (!profile.name) {
+          setIsEditingProfile(true);
         }
       },
       tempProfile.grade,
       tempProfile.classNum
     );
     return () => unsub();
-  }, [tempProfile.grade, tempProfile.classNum, profile.name, profile.studentNumber]);
+  }, [tempProfile.grade, tempProfile.classNum, profile.name]);
 
   // Listen to live URL changes (e.g. scanning QR code while app is in background or foreground)
   useEffect(() => {
@@ -221,8 +209,14 @@ export const StudentMobileView: React.FC<StudentMobileViewProps> = ({
       alert('학생 성명을 입력하거나 명렬표에서 본인 이름을 선택해주세요.');
       return;
     }
-    setProfile(tempProfile);
-    localStorage.setItem(PROFILE_STORAGE_KEY, JSON.stringify(tempProfile));
+    const finalNumber = Number(tempProfile.studentNumber) || 1;
+    const finalProfile = {
+      ...tempProfile,
+      studentNumber: finalNumber,
+    };
+    setProfile(finalProfile);
+    setTempProfile(finalProfile);
+    localStorage.setItem(PROFILE_STORAGE_KEY, JSON.stringify(finalProfile));
     setIsEditingProfile(false);
   };
 
@@ -816,8 +810,15 @@ export const StudentMobileView: React.FC<StudentMobileViewProps> = ({
                     type="number"
                     min={1}
                     max={45}
-                    value={tempProfile.studentNumber}
-                    onChange={(e) => setTempProfile({ ...tempProfile, studentNumber: Number(e.target.value) })}
+                    placeholder="예: 7"
+                    value={tempProfile.studentNumber === 0 ? '' : tempProfile.studentNumber}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setTempProfile({
+                        ...tempProfile,
+                        studentNumber: val === '' ? 0 : parseInt(val, 10) || 0,
+                      });
+                    }}
                     className={`w-full p-2 rounded-xl border text-xs font-bold focus:ring-2 focus:ring-indigo-500 outline-none ${
                       isLight ? 'bg-indigo-50/50 border-indigo-200 text-slate-900' : 'bg-slate-800 border-slate-700 text-white'
                     }`}

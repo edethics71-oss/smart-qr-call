@@ -1362,8 +1362,12 @@ export const StudentRosterManagementView: React.FC<StudentRosterManagementViewPr
                 min={1}
                 max={45}
                 required
-                value={formNumber}
-                onChange={(e) => setFormNumber(Number(e.target.value))}
+                placeholder="예: 1"
+                value={formNumber === 0 ? '' : formNumber}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setFormNumber(val === '' ? 0 : parseInt(val, 10) || 0);
+                }}
                 className={`w-full p-2.5 rounded-xl border font-bold text-xs ${
                   isLight ? 'bg-indigo-50/40 border-indigo-200' : 'bg-slate-800 border-slate-700 text-white'
                 }`}
