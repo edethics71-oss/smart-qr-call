@@ -1,19 +1,23 @@
 /**
  * Helper to get accessible URLs for external devices (like student smartphones).
- * Always uses the active window.location.origin so scanned QR codes connect to the EXACT current running instance.
+ * Ensures smartphone QR codes point to the public shareable domain (ais-pre) so students can access without login errors.
  */
+const SHARED_PUBLIC_BASE = 'https://ais-pre-3ynzpxlq3dlqmypenufya3-262314127389.asia-northeast1.run.app';
+
 export function getActiveOrigin(): string {
   if (typeof window === 'undefined') {
-    return 'https://ais-dev-3ynzpxlq3dlqmypenufya3-262314127389.asia-northeast1.run.app';
+    return SHARED_PUBLIC_BASE;
   }
-  return window.location.origin;
+  const current = window.location.origin;
+  // If running inside private dev session (ais-dev), convert to public shareable (ais-pre) for smartphone compatibility
+  if (current.includes('ais-dev-')) {
+    return current.replace('ais-dev-', 'ais-pre-');
+  }
+  return current;
 }
 
 export function getPublicOrigin(): string {
-  if (typeof window === 'undefined') {
-    return 'https://ais-dev-3ynzpxlq3dlqmypenufya3-262314127389.asia-northeast1.run.app';
-  }
-  return window.location.origin;
+  return SHARED_PUBLIC_BASE;
 }
 
 export function getDevOrigin(): string {

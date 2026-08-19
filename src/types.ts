@@ -1,4 +1,4 @@
-export type CallStatus = 'pending' | 'accepted' | 'ignored' | 'auto-away';
+export type CallStatus = 'pending' | 'accepted' | 'wait_outside' | 'ignored' | 'auto-away';
 
 export interface Teacher {
   id: string;

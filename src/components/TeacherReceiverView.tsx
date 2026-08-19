@@ -211,6 +211,15 @@ export const TeacherReceiverView: React.FC<TeacherReceiverViewProps> = ({
     }
   };
 
+  const handleWaitOutsideCall = async (callId: string) => {
+    try {
+      await dbService.updateCallStatus(callId, 'wait_outside');
+      setActivePendingCall(null);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
   const handleBusyCall = async (callId: string) => {
     try {
       await dbService.updateCallStatus(callId, 'auto-away');
@@ -604,17 +613,22 @@ export const TeacherReceiverView: React.FC<TeacherReceiverViewProps> = ({
                       ➔ {call.teacherName} 선생님 ({call.room})
                     </span>
                     {call.status === 'accepted' && (
-                      <span className="text-[11px] font-bold px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800">
-                        ✓ 수락 완료
+                      <span className="text-[11px] font-bold px-2 py-0.5 rounded-md bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300">
+                        ✓ 입장 수락
+                      </span>
+                    )}
+                    {call.status === 'wait_outside' && (
+                      <span className="text-[11px] font-bold px-2 py-0.5 rounded-md bg-sky-100 dark:bg-sky-950 text-sky-800 dark:text-sky-300">
+                        🚪 밖에서 대기 안내됨
                       </span>
                     )}
                     {call.status === 'auto-away' && (
-                      <span className="text-[11px] font-bold px-2 py-0.5 rounded-md bg-amber-100 text-amber-800">
+                      <span className="text-[11px] font-bold px-2 py-0.5 rounded-md bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300">
                         부재중 자동안내
                       </span>
                     )}
                     {call.status === 'ignored' && (
-                      <span className="text-[11px] font-bold px-2 py-0.5 rounded-md bg-rose-100 text-rose-800">
+                      <span className="text-[11px] font-bold px-2 py-0.5 rounded-md bg-rose-100 dark:bg-rose-950 text-rose-800 dark:text-rose-300">
                         거절/취소
                       </span>
                     )}
@@ -639,15 +653,21 @@ export const TeacherReceiverView: React.FC<TeacherReceiverViewProps> = ({
                     <div className="flex items-center gap-1.5">
                       <button
                         onClick={() => handleAcceptCall(call.id)}
-                        className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-black transition cursor-pointer"
+                        className="px-2.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs transition cursor-pointer"
                       >
                         입실 수락
                       </button>
                       <button
-                        onClick={() => handleBusyCall(call.id)}
-                        className="px-3 py-1.5 rounded-xl bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-white font-bold transition cursor-pointer"
+                        onClick={() => handleWaitOutsideCall(call.id)}
+                        className="px-2.5 py-1.5 rounded-xl bg-sky-600 hover:bg-sky-700 text-white font-bold text-xs transition cursor-pointer"
                       >
-                        바쁨/메모유도
+                        밖에서 대기
+                      </button>
+                      <button
+                        onClick={() => handleBusyCall(call.id)}
+                        className="px-2.5 py-1.5 rounded-xl bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-white font-bold text-xs transition cursor-pointer"
+                      >
+                        바쁨
                       </button>
                     </div>
                   )}
@@ -718,20 +738,32 @@ export const TeacherReceiverView: React.FC<TeacherReceiverViewProps> = ({
             )}
 
             {/* Action Buttons */}
-            <div className="grid grid-cols-2 gap-3 pt-2">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-2">
               <button
                 onClick={() => handleAcceptCall(activePendingCall.id)}
-                className="py-3.5 px-4 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-sm shadow-lg shadow-emerald-600/30 flex items-center justify-center gap-1.5 transition cursor-pointer"
+                className="py-3.5 px-3 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs sm:text-sm shadow-lg shadow-emerald-600/30 flex flex-col items-center justify-center gap-1 transition cursor-pointer"
               >
                 <CheckCircle2 className="w-5 h-5" />
                 <span>들어오세요 (수락)</span>
+                <span className="text-[10px] font-normal opacity-90">교무실 안으로 입장</span>
+              </button>
+
+              <button
+                onClick={() => handleWaitOutsideCall(activePendingCall.id)}
+                className="py-3.5 px-3 rounded-2xl bg-sky-600 hover:bg-sky-700 text-white font-black text-xs sm:text-sm shadow-lg shadow-sky-600/30 flex flex-col items-center justify-center gap-1 transition cursor-pointer"
+              >
+                <DoorOpen className="w-5 h-5" />
+                <span>밖에서 대기</span>
+                <span className="text-[10px] font-normal opacity-90">곧 나갈게요</span>
               </button>
 
               <button
                 onClick={() => handleBusyCall(activePendingCall.id)}
-                className="py-3.5 px-4 rounded-2xl bg-slate-200 hover:bg-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-white font-black text-sm transition cursor-pointer"
+                className="py-3.5 px-3 rounded-2xl bg-slate-700 hover:bg-slate-800 text-white font-black text-xs sm:text-sm shadow-md flex flex-col items-center justify-center gap-1 transition cursor-pointer"
               >
-                <span>지금 바쁨 (메모유도)</span>
+                <Clock className="w-5 h-5" />
+                <span>지금 바쁨</span>
+                <span className="text-[10px] font-normal opacity-90">메모 작성 유도</span>
               </button>
             </div>
           </div>

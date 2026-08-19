@@ -29,9 +29,11 @@ import {
   Paperclip,
   Link2,
   ExternalLink,
-  Download
+  Download,
+  DoorOpen
 } from 'lucide-react';
 import { dbService } from '../lib/firebase';
+import { playAlertChime } from '../utils/audio';
 import type {
   Teacher,
   Call,
@@ -480,21 +482,52 @@ export const StudentMobileView: React.FC<StudentMobileViewProps> = ({
   // Subscribe to teacher calls for my grade & class
   useEffect(() => {
     const unsubscribe = dbService.subscribeTeacherCallsToStudent((calls) => {
+      const myGrade = Number(profile.grade);
+      const myClass = Number(profile.classNum);
+      const myNum = Number(profile.studentNumber);
+      const myName = (profile.name || '').trim();
+
       // Filter for me or my whole class
       const relevant = calls.filter((c) => {
-        if (c.targetGrade !== 0 && c.targetGrade !== profile.grade) return false;
-        if (c.targetClass !== 0 && c.targetClass !== profile.classNum) return false;
-        if (c.targetNumber && c.targetNumber !== 0 && c.targetNumber !== profile.studentNumber) {
-          if (c.targetStudentName && !c.targetStudentName.includes(profile.name)) {
+        const tGrade = Number(c.targetGrade);
+        const tClass = Number(c.targetClass);
+        const tNum = Number(c.targetNumber);
+        const tName = (c.targetStudentName || '').trim();
+
+        // 1. Grade check (0 = whole school)
+        if (tGrade !== 0 && tGrade !== myGrade) return false;
+
+        // 2. Class check (0 = whole grade)
+        if (tClass !== 0 && tClass !== myClass) return false;
+
+        // 3. Specific student check
+        const isClassWide = !tName || tName.includes('전체') || tName === `${myClass}반 학생`;
+        if (!isClassWide) {
+          const nameMatches = myName && (tName.includes(myName) || myName.includes(tName));
+          const numMatches = tNum > 0 && myNum > 0 && tNum === myNum;
+          if (!nameMatches && !numMatches) {
             return false;
           }
         }
+
         return true;
       });
+
       setTeacherCalls(relevant);
+
+      // Play chime & vibration if a new sent call arrives
+      const hasNewCall = relevant.some((c) => c.status === 'sent');
+      if (hasNewCall) {
+        playAlertChime();
+        if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+          try {
+            navigator.vibrate([200, 100, 200, 100, 300]);
+          } catch (e) {}
+        }
+      }
     });
     return () => unsubscribe();
-  }, [profile]);
+  }, [profile.grade, profile.classNum, profile.studentNumber, profile.name]);
 
   // Subscribe to notices for my grade & class
   useEffect(() => {
@@ -502,23 +535,17 @@ export const StudentMobileView: React.FC<StudentMobileViewProps> = ({
       (list) => {
         setNotices(list);
       },
-      profile.grade,
-      profile.classNum,
+      Number(profile.grade),
+      Number(profile.classNum),
       true // isStudentViewer
     );
     return () => unsubscribe();
-  }, [profile]);
+  }, [profile.grade, profile.classNum]);
 
   // Unacknowledged direct urgent teacher call popup
   const urgentDirectCall = useMemo(() => {
-    return teacherCalls.find(
-      (c) =>
-        c.status === 'sent' &&
-        (c.targetNumber === profile.studentNumber ||
-          c.targetStudentName.includes(profile.name) ||
-          c.targetClass === profile.classNum)
-    );
-  }, [teacherCalls, profile]);
+    return teacherCalls.find((c) => c.status === 'sent');
+  }, [teacherCalls]);
 
   const handleAcknowledgeCall = async (callId: string) => {
     try {
@@ -1059,6 +1086,21 @@ export const StudentMobileView: React.FC<StudentMobileViewProps> = ({
                     <p className="text-xs text-slate-500 font-bold">
                       지금 바로 교무실 안으로 입장해주세요.
                     </p>
+                  </div>
+                )}
+
+                {activeCall?.status === 'wait_outside' && (
+                  <div className="space-y-3 animate-in zoom-in-95 duration-200">
+                    <div className="w-16 h-16 mx-auto rounded-full bg-sky-100 dark:bg-sky-950/80 text-sky-600 flex items-center justify-center animate-bounce shadow-lg shadow-sky-600/20">
+                      <DoorOpen className="w-9 h-9" />
+                    </div>
+                    <h3 className="text-lg font-black text-sky-600 dark:text-sky-400">
+                      "밖에서 기다리세요. 곧 나갈게요!"
+                    </h3>
+                    <div className="p-3.5 rounded-2xl bg-sky-50 dark:bg-sky-950/40 border border-sky-200 dark:border-sky-800 text-xs font-bold text-sky-900 dark:text-sky-200 space-y-1">
+                      <p>선생님께서 호출을 확인하셨으며, 곧 교무실 밖으로 나오실 예정입니다.</p>
+                      <p className="text-[11px] font-normal text-slate-500">교무실 문앞 복도에서 잠시만 대기해주세요.</p>
+                    </div>
                   </div>
                 )}
 
