@@ -107,6 +107,17 @@ function initSSE() {
             cbs.forEach((fn) => fn(payload.data));
           }
           if (payload.type === 'SYSTEM_RESET') {
+            try {
+              localStorage.removeItem(STORAGE_STUDENTS_KEY);
+              localStorage.removeItem(STORAGE_CALLS_KEY);
+              localStorage.removeItem(STORAGE_TEACHER_CALLS_KEY);
+              localStorage.removeItem(STORAGE_NOTICES_KEY);
+              localStorage.removeItem(STORAGE_ATTENDANCE_KEY);
+              localStorage.removeItem(STORAGE_WORK_NOTES_KEY);
+              localStorage.removeItem('edu_student_profile_v1');
+            } catch (storageErr) {
+              console.error('Error clearing localStorage on SYSTEM_RESET:', storageErr);
+            }
             Object.keys(eventListeners).forEach((type) => {
               eventListeners[type].forEach((fn) => fn());
             });
@@ -892,6 +903,26 @@ export const dbService = {
       unsubSSE();
       clearInterval(interval);
     };
+  },
+
+  async forceRefreshStudents(gradeFilter?: number, classFilter?: number): Promise<StudentRecord[]> {
+    try {
+      const res = await fetch('/api/students?_t=' + Date.now());
+      if (res.ok) {
+        let list: StudentRecord[] = await res.json();
+        saveLocal(STORAGE_STUDENTS_KEY, list);
+        if (gradeFilter && gradeFilter > 0) {
+          list = list.filter((s) => s.grade === gradeFilter);
+        }
+        if (classFilter && classFilter > 0) {
+          list = list.filter((s) => s.classNum === classFilter);
+        }
+        return list;
+      }
+    } catch (e) {
+      console.error('Failed to force refresh students:', e);
+    }
+    return getLocal<StudentRecord[]>(STORAGE_STUDENTS_KEY, []);
   },
 
   async addStudent(student: Omit<StudentRecord, 'id' | 'createdAt'>): Promise<string> {

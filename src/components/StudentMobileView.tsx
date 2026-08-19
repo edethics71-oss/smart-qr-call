@@ -135,6 +135,19 @@ export const StudentMobileView: React.FC<StudentMobileViewProps> = ({
   const [isEditingProfile, setIsEditingProfile] = useState(() => !profile.name.trim());
   const [tempProfile, setTempProfile] = useState<StudentProfile>(profile);
   const [tempClassRoster, setTempClassRoster] = useState<StudentRecord[]>([]);
+  const [isSyncingRoster, setIsSyncingRoster] = useState(false);
+
+  const handleForceRefreshRoster = async () => {
+    setIsSyncingRoster(true);
+    try {
+      const fresh = await dbService.forceRefreshStudents(tempProfile.grade, tempProfile.classNum);
+      setTempClassRoster(fresh);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsSyncingRoster(false);
+    }
+  };
 
   // Always subscribe to student roster for current grade/class to validate and provide easy selection
   useEffect(() => {
@@ -673,12 +686,18 @@ export const StudentMobileView: React.FC<StudentMobileViewProps> = ({
             {tempClassRoster.length > 0 ? (
               <div className="p-3 rounded-2xl bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800 space-y-2">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-black text-indigo-900 dark:text-indigo-200">
-                    👇 {tempProfile.grade}학년 {tempProfile.classNum}반 명렬표에서 본인 이름을 터치하세요:
+                  <span className="text-xs font-black text-indigo-900 dark:text-indigo-200 flex items-center gap-1.5">
+                    <span>👇 {tempProfile.grade}학년 {tempProfile.classNum}반 명렬표 ({tempClassRoster.length}명)</span>
                   </span>
-                  <span className="text-[10px] text-slate-500 font-bold">
-                    총 {tempClassRoster.length}명
-                  </span>
+                  <button
+                    type="button"
+                    onClick={handleForceRefreshRoster}
+                    disabled={isSyncingRoster}
+                    className="text-[10px] px-2 py-0.5 rounded-lg bg-indigo-200/80 dark:bg-indigo-800/80 text-indigo-900 dark:text-indigo-200 font-bold hover:bg-indigo-300 flex items-center gap-1 cursor-pointer"
+                  >
+                    <RotateCcw className={`w-3 h-3 ${isSyncingRoster ? 'animate-spin' : ''}`} />
+                    <span>{isSyncingRoster ? '동기화 중...' : '최신 갱신'}</span>
+                  </button>
                 </div>
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5 max-h-48 overflow-y-auto p-1 bg-white/60 dark:bg-slate-900/60 rounded-xl border border-indigo-100 dark:border-indigo-900">
                   {tempClassRoster.map((std) => (
@@ -706,8 +725,22 @@ export const StudentMobileView: React.FC<StudentMobileViewProps> = ({
                 </p>
               </div>
             ) : (
-              <div className="p-3 rounded-2xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/50 text-[11px] text-amber-800 dark:text-amber-300">
-                ⚠️ {tempProfile.grade}학년 {tempProfile.classNum}반에 아직 등록된 학생 명렬표가 없습니다. 아래에서 직접 학년, 반, 번호, 성명을 입력하실 수 있습니다.
+              <div className="p-3 rounded-2xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/50 text-[11px] text-amber-800 dark:text-amber-300 space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold">⚠️ {tempProfile.grade}학년 {tempProfile.classNum}반에 등록된 학생 명렬이 없습니다.</span>
+                  <button
+                    type="button"
+                    onClick={handleForceRefreshRoster}
+                    disabled={isSyncingRoster}
+                    className="text-[10px] px-2 py-0.5 rounded-lg bg-amber-200 dark:bg-amber-800 text-amber-900 dark:text-amber-100 font-bold hover:bg-amber-300 flex items-center gap-1 cursor-pointer"
+                  >
+                    <RotateCcw className={`w-3 h-3 ${isSyncingRoster ? 'animate-spin' : ''}`} />
+                    <span>{isSyncingRoster ? '확인 중...' : '새로고침'}</span>
+                  </button>
+                </div>
+                <p className="text-[10px] text-amber-700 dark:text-amber-400">
+                  선생님이 등록하신 학년/반과 일치하는지 아래 학년·반 선택을 확인하시거나, 직접 번호와 이름을 입력하세요.
+                </p>
               </div>
             )}
 
